@@ -1,0 +1,32 @@
+:root {
+  /* Surface */
+  --bg-color: #ffffff;
+  --card-bg: rgba(155, 89, 182, 0.12);
+  --card-border: rgba(155, 89, 182, 0.25);
+  --card-hover-border: rgba(155, 89, 182, 0.3);
+
+  /* Text */
+  --text-primary: #1a1a2e;
+  --text-secondary: #5a5a7a;
+
+  /* Accent */
+  --accent-primary: #8e44ad;
+  --accent-secondary: #732d91;
+  --accent-info: #3b82f6;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 24px;
+
+  /* Shadows */
+  --shadow-md: 0 10px 20px rgba(37, 99, 235, 0.2);
+  --shadow-lg: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+
+  /* Spacing scale */
+  --space-xs: 0.5rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+}
