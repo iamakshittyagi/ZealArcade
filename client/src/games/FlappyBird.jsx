@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import GameWrapper from '../components/GameWrapper';
+import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
 import { RotateCcw, Play } from 'lucide-react';
 
 const FlappyBird = () => {
     const { updateBalance } = useGame();
     const canvasRef = useRef(null);
+    const bgCanvasRef = useRef(null);
     const [gameState, setGameState] = useState('START');
     const [score, setScore] = useState(0);
     const [highScore, setHighScore] = useState(parseInt(localStorage.getItem('flappyHighScore')) || 0);
@@ -181,6 +182,54 @@ const FlappyBird = () => {
     };
 
     useEffect(() => {
+        const canvas = bgCanvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let animId;
+        let W = canvas.width = window.innerWidth;
+        let H = canvas.height = window.innerHeight;
+
+        const dots = Array.from({ length: 45 }, () => ({
+            x: Math.random() * W, y: Math.random() * H,
+            r: Math.random() * 2 + 1,
+            vx: (Math.random() - 0.5) * 0.35,
+            vy: (Math.random() - 0.5) * 0.35,
+            color: Math.random() > 0.6 ? '#22c55e' : '#8e44ad',
+        }));
+
+        const drawBg = () => {
+            ctx.clearRect(0, 0, W, H);
+            dots.forEach(d => {
+                d.x += d.vx; d.y += d.vy;
+                if (d.x < 0 || d.x > W) d.vx *= -1;
+                if (d.y < 0 || d.y > H) d.vy *= -1;
+                ctx.beginPath();
+                ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+                ctx.fillStyle = d.color + '55';
+                ctx.fill();
+            });
+            dots.forEach((a, i) => {
+                dots.slice(i + 1).forEach(b => {
+                    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+                    if (dist < 120) {
+                        ctx.beginPath();
+                        ctx.moveTo(a.x, a.y);
+                        ctx.lineTo(b.x, b.y);
+                        ctx.strokeStyle = `rgba(142,68,173,${0.10 * (1 - dist / 120)})`;
+                        ctx.lineWidth = 0.6;
+                        ctx.stroke();
+                    }
+                });
+            });
+            animId = requestAnimationFrame(drawBg);
+        };
+        drawBg();
+        const onResize = () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; };
+        window.addEventListener('resize', onResize);
+        return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', onResize); };
+    }, []);
+
+    useEffect(() => {
         const loop = () => {
             update();
             draw();
@@ -192,68 +241,115 @@ const FlappyBird = () => {
 
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault();
-                handleInput();
-            }
+            if (e.code === 'Space') { e.preventDefault(); handleInput(); }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [gameState]);
 
     return (
-        <GameWrapper title="Flappy Bird">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-                <div style={{ display: 'flex', gap: '3rem', color: 'var(--accent-primary)', fontSize: '1.5rem', fontWeight: 800 }}>
-                    <div>Score: {score}</div>
-                    <div>Best: {highScore}</div>
+        <Layout>
+            <div className="ar-root">
+                <canvas ref={bgCanvasRef} className="ar-bg-canvas" />
+                <div className="ar-blob ar-blob-1" />
+                <div className="ar-blob ar-blob-2" />
+
+                <div className="ar-inner">
+                    <div className="ar-page-header">
+                        <h1 className="ar-title">
+                            <span className="ar-title-dark">Flappy</span>
+                            <span className="ar-title-purple"> Bird.</span>
+                        </h1>
+                        <p className="ar-subtitle">Click or press Space to flap. Don't hit the pipes!</p>
+                    </div>
+
+                    <div className="ar-status-row">
+                        <div style={{ display: 'flex', gap: '1.5rem' }}>
+                            <div style={{ textAlign: 'center' }}>
+                                <div className="ar-stat-label">Score</div>
+                                <div className="ar-stat-val">{score}</div>
+                            </div>
+                            <div style={{ textAlign: 'center' }}>
+                                <div className="ar-stat-label">Best</div>
+                                <div className="ar-stat-val">{highScore}</div>
+                            </div>
+                        </div>
+                        <button className="ar-restart-btn" onClick={resetGame}>
+                            <RotateCcw size={15} /> Restart
+                        </button>
+                    </div>
+
+                    <div className="ar-board-wrap">
+                        <div style={{ position: 'relative' }}>
+                            <canvas
+                                ref={canvasRef}
+                                width="400"
+                                height="500"
+                                onClick={handleInput}
+                                className="ar-game-canvas"
+                            />
+                            {gameState === 'START' && (
+                                <div className="ar-modal-overlay-inline">
+                                    <h2 className="ar-modal-title">Ready?</h2>
+                                    <div className="ar-modal-actions">
+                                        <button onClick={handleInput} className="ar-btn-primary">
+                                            <Play size={16} /> Start Game
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            {gameState === 'GAME_OVER' && (
+                                <div className="ar-modal-overlay-inline">
+                                    <h2 className="ar-modal-title">💔 Game Over</h2>
+                                    <p className="ar-modal-fee">Earned: <span className="ar-coin-val">+{score * 2} Z Coins</span></p>
+                                    <div className="ar-modal-actions">
+                                        <button onClick={resetGame} className="ar-btn-primary">
+                                            <RotateCcw size={16} /> Play Again
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <p className="ar-hint">Click or press Space to jump</p>
                 </div>
 
-                <div style={{ position: 'relative', width: 'fit-content' }}>
-                    <canvas
-                        ref={canvasRef}
-                        width="400"
-                        height="500"
-                        onClick={handleInput}
-                        style={{
-                            border: '4px solid var(--accent-secondary)',
-                            borderRadius: '16px',
-                            cursor: 'pointer',
-                            boxShadow: '0 0 30px rgba(108, 52, 131, 0.3)'
-                        }}
-                    />
-
-                    {gameState === 'START' && (
-                        <div style={{
-                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                            background: 'rgba(15, 7, 26, 0.4)', borderRadius: '12px'
-                        }}>
-                            <h2 style={{ color: 'var(--accent-primary)', fontSize: '2.5rem', marginBottom: '1rem' }}>Ready?</h2>
-                            <button onClick={handleInput} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <Play size={20} /> Start Game
-                            </button>
-                        </div>
-                    )}
-
-                    {gameState === 'GAME_OVER' && (
-                        <div style={{
-                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                            borderRadius: '12px'
-                        }}>
-                            <h2 style={{ color: 'var(--accent-primary)', fontSize: '2.5rem', marginBottom: '0.5rem' }}>Game Over</h2>
-                            <p style={{ marginBottom: '1.5rem' }}>Earned: <span style={{ color: '#FFD700', fontWeight: 600 }}>+{score * 2}</span> Z Coins</p>
-                            <button onClick={resetGame} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <RotateCcw size={20} /> Play Again
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                <p style={{ color: 'var(--text-secondary)' }}>Click or Press Space to Jump</p>
+                <style>{`
+                    .ar-root { position: relative; min-height: 100vh; overflow: hidden; background: linear-gradient(145deg, #faf8ff 0%, #f0f9f0 50%, #fdf6ff 100%); }
+                    .ar-bg-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+                    .ar-blob { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; }
+                    .ar-blob-1 { width: 500px; height: 500px; background: rgba(142,68,173,0.07); top: -100px; right: -100px; }
+                    .ar-blob-2 { width: 400px; height: 400px; background: rgba(34,197,94,0.06); bottom: 80px; left: -80px; }
+                    .ar-inner { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: 3rem 2rem 5rem; }
+                    .ar-page-header { margin-bottom: 2rem; text-align: center; }
+                    .ar-title { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem; font-family: var(--font-ui); font-size: clamp(1.8rem, 3.5vw, 2.6rem); font-weight: 900; line-height: 1.15; letter-spacing: -0.5px; margin: 0 0 0.6rem; }
+                    .ar-title-dark { color: var(--text-primary); }
+                    .ar-title-purple { background: linear-gradient(135deg, #8e44ad, #732d91); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+                    .ar-title-green { background: linear-gradient(135deg, #22c55e, #16a34a); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+                    .ar-subtitle { color: var(--text-secondary); font-size: 1rem; line-height: 1.6; max-width: 480px; margin: 0 auto; }
+                    .ar-status-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; background: rgba(255,255,255,0.85); border: 1px solid rgba(142,68,173,0.14); border-radius: 14px; padding: 0.75rem 1.2rem; backdrop-filter: blur(8px); box-shadow: 0 4px 14px rgba(142,68,173,0.06); }
+                    .ar-stat-label { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+                    .ar-stat-val { font-size: 1.3rem; font-weight: 800; color: #8e44ad; }
+                    .ar-restart-btn { display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(142,68,173,0.06); border: 1px solid rgba(142,68,173,0.18); color: var(--accent-primary); padding: 0.5rem 1rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem; font-family: var(--font-ui); cursor: pointer; transition: all 0.2s; }
+                    .ar-restart-btn:hover { background: rgba(142,68,173,0.12); transform: translateY(-1px); }
+                    .ar-board-wrap { background: rgba(255,255,255,0.9); border: 1px solid rgba(142,68,173,0.14); border-radius: 20px; padding: 1rem; box-shadow: 0 20px 60px rgba(142,68,173,0.12), 0 4px 16px rgba(0,0,0,0.06); backdrop-filter: blur(12px); }
+                    .ar-game-canvas { width: 100%; height: auto; border-radius: 12px; cursor: pointer; display: block; }
+                    .ar-modal-overlay-inline { position: absolute; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(6px); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; gap: 0.75rem; }
+                    .ar-modal-title { font-family: var(--font-ui); font-size: 1.6rem; font-weight: 900; color: white; margin: 0; }
+                    .ar-modal-fee { color: rgba(255,255,255,0.85); margin: 0; font-size: 1rem; }
+                    .ar-modal-balance { color: rgba(255,255,255,0.7); margin: 0.4rem 0; font-size: 1rem; }
+                    .ar-coin-val { color: #FFB400; font-weight: 800; }
+                    .ar-modal-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+                    .ar-btn-primary { display: inline-flex; align-items: center; gap: 0.5rem; background: linear-gradient(135deg, #8e44ad, #732d91); color: white; border: none; padding: 0.85rem 1.6rem; border-radius: 999px; font-weight: 700; font-family: var(--font-ui); font-size: 0.95rem; cursor: pointer; transition: all 0.3s; box-shadow: 0 6px 20px rgba(142,68,173,0.28); }
+                    .ar-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(142,68,173,0.38); }
+                    .ar-btn-outline { display: inline-flex; align-items: center; padding: 0.85rem 1.6rem; border-radius: 999px; border: 1.5px solid rgba(142,68,173,0.3); color: var(--accent-primary); background: rgba(142,68,173,0.04); font-weight: 700; font-family: var(--font-ui); font-size: 0.95rem; text-decoration: none; transition: all 0.3s; }
+                    .ar-btn-outline:hover { background: rgba(142,68,173,0.10); transform: translateY(-2px); }
+                    .ar-hint { color: var(--text-secondary); font-size: 0.9rem; text-align: center; margin-top: 1rem; }
+                    @media (max-width: 640px) { .ar-inner { padding: 2rem 1.25rem 3rem; } }
+                `}</style>
             </div>
-        </GameWrapper>
+        </Layout>
     );
 };
 

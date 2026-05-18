@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import GameWrapper from '../components/GameWrapper';
 import { useGame } from '../context/GameContext';
+import Layout from '../components/Layout';
 import { RotateCcw, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -19,26 +19,72 @@ const Arrows = () => {
     const [isWin, setIsWin] = useState(false);
     const [showPayment, setShowPayment] = useState(false);
 
-    const canvasRef = useRef(null);
+    const gameCanvasRef = useRef(null);
+    const bgCanvasRef = useRef(null);
     const linesRef = useRef([]);
     const animationIdRef = useRef(null);
     const NRef = useRef(20);
 
     const getCost = (lvl) => lvl === 1 ? 0 : Math.floor(lvl / 2) * 10;
 
+    // ── Background particle canvas (same as Welcome / Arcade / Rewards) ──
+    useEffect(() => {
+        const canvas = bgCanvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let animId;
+        let W = canvas.width = window.innerWidth;
+        let H = canvas.height = window.innerHeight;
+
+        const dots = Array.from({ length: 45 }, () => ({
+            x: Math.random() * W,
+            y: Math.random() * H,
+            r: Math.random() * 2 + 1,
+            vx: (Math.random() - 0.5) * 0.35,
+            vy: (Math.random() - 0.5) * 0.35,
+            color: Math.random() > 0.6 ? '#22c55e' : '#8e44ad',
+        }));
+
+        const draw = () => {
+            ctx.clearRect(0, 0, W, H);
+            dots.forEach(d => {
+                d.x += d.vx; d.y += d.vy;
+                if (d.x < 0 || d.x > W) d.vx *= -1;
+                if (d.y < 0 || d.y > H) d.vy *= -1;
+                ctx.beginPath();
+                ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+                ctx.fillStyle = d.color + '55';
+                ctx.fill();
+            });
+            dots.forEach((a, i) => {
+                dots.slice(i + 1).forEach(b => {
+                    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+                    if (dist < 120) {
+                        ctx.beginPath();
+                        ctx.moveTo(a.x, a.y);
+                        ctx.lineTo(b.x, b.y);
+                        ctx.strokeStyle = `rgba(142,68,173,${0.10 * (1 - dist / 120)})`;
+                        ctx.lineWidth = 0.6;
+                        ctx.stroke();
+                    }
+                });
+            });
+            animId = requestAnimationFrame(draw);
+        };
+        draw();
+
+        const onResize = () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; };
+        window.addEventListener('resize', onResize);
+        return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', onResize); };
+    }, []);
+
+    // ── Game logic (unchanged) ──
     const initPuzzle = (lvl) => {
         let n = 20;
         let targetLines = 0;
-        if (lvl < 5) {
-            n = 20;
-            targetLines = 100 + (lvl * 25);
-        } else if (lvl < 10) {
-            n = 25;
-            targetLines = 250 + (lvl - 5) * 15;
-        } else {
-            n = 30;
-            targetLines = 400 + (lvl - 10) * 10;
-        }
+        if (lvl < 5) { n = 20; targetLines = 100 + (lvl * 25); }
+        else if (lvl < 10) { n = 25; targetLines = 250 + (lvl - 5) * 15; }
+        else { n = 30; targetLines = 400 + (lvl - 10) * 10; }
         NRef.current = n;
         linesRef.current = generatePuzzle(n, targetLines);
         setIsWin(false);
@@ -49,32 +95,25 @@ const Arrows = () => {
     const generatePuzzle = (size, numLines) => {
         const generated = [];
         const occupied = Array(size).fill(0).map(() => Array(size).fill(false));
-
         for (let i = 0; i < numLines; i++) {
             const dir = DIRS[Math.floor(Math.random() * 4)];
             const safeHeads = [];
             for (let r = 0; r < size; r++) {
                 for (let c = 0; c < size; c++) {
                     if (occupied[r][c]) continue;
-                    let rr = r + dir.dr;
-                    let cc = c + dir.dc;
-                    let isSafe = true;
+                    let rr = r + dir.dr, cc = c + dir.dc, isSafe = true;
                     while (rr >= 0 && rr < size && cc >= 0 && cc < size) {
                         if (occupied[rr][cc]) { isSafe = false; break; }
-                        rr += dir.dr;
-                        cc += dir.dc;
+                        rr += dir.dr; cc += dir.dc;
                     }
                     if (isSafe) safeHeads.push({ r, c });
                 }
             }
-
             if (safeHeads.length === 0) break;
             safeHeads.sort(() => Math.random() - 0.5);
-
             let placed = false;
             for (const head of safeHeads) {
-                const backR = head.r - dir.dr;
-                const backC = head.c - dir.dc;
+                const backR = head.r - dir.dr, backC = head.c - dir.dc;
                 if (backR >= 0 && backR < size && backC >= 0 && backC < size && !occupied[backR][backC]) {
                     const body = [{ r: backR, c: backC }, head];
                     let current = { r: backR, c: backC };
@@ -83,8 +122,7 @@ const Arrows = () => {
                     while (length < maxLen) {
                         const neighbors = [];
                         for (const d of DIRS) {
-                            const nr = current.r + d.dr;
-                            const nc = current.c + d.dc;
+                            const nr = current.r + d.dr, nc = current.c + d.dc;
                             if (nr >= 0 && nr < size && nc >= 0 && nc < size && !occupied[nr][nc] && !body.find(p => p.r === nr && p.c === nc)) {
                                 neighbors.push({ r: nr, c: nc });
                             }
@@ -110,10 +148,7 @@ const Arrows = () => {
         return generated.reverse();
     };
 
-    const getCoord = (p, cellSize) => ({
-        x: p.c * cellSize + cellSize / 2,
-        y: p.r * cellSize + cellSize / 2
-    });
+    const getCoord = (p, cellSize) => ({ x: p.c * cellSize + cellSize / 2, y: p.r * cellSize + cellSize / 2 });
 
     const getPathPos = (line, d) => {
         const pts = line.body;
@@ -122,16 +157,10 @@ const Arrows = () => {
         if (d < n) {
             const index = Math.floor(d);
             const t = d - index;
-            return {
-                r: pts[index].r + (pts[index + 1].r - pts[index].r) * t,
-                c: pts[index].c + (pts[index + 1].c - pts[index].c) * t
-            };
+            return { r: pts[index].r + (pts[index + 1].r - pts[index].r) * t, c: pts[index].c + (pts[index + 1].c - pts[index].c) * t };
         } else {
             const over = d - n;
-            return {
-                r: pts[n].r + line.dir.dr * over,
-                c: pts[n].c + line.dir.dc * over
-            };
+            return { r: pts[n].r + line.dir.dr * over, c: pts[n].c + line.dir.dc * over };
         }
     };
 
@@ -158,7 +187,7 @@ const Arrows = () => {
     };
 
     const draw = () => {
-        const canvas = canvasRef.current;
+        const canvas = gameCanvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         const N = NRef.current;
@@ -177,45 +206,18 @@ const Arrows = () => {
         }
 
         for (const line of linesRef.current) {
-            if (line.removed || line.isRemoving) continue;
-            const head = line.body[line.body.length - 1];
-            let endR = head.r + line.dir.dr;
-            let endC = head.c + line.dir.dc;
-            let hitBlocker = false;
-            while (endR >= 0 && endR < N && endC >= 0 && endC < N) {
-                const blocker = grid[endR][endC];
-                if (blocker && blocker !== line) { hitBlocker = true; break; }
-                endR += line.dir.dr;
-                endC += line.dir.dc;
-            }
-            const startP = getCoord(head, cellSize);
-            const endP = getCoord({ r: endR, c: endC }, cellSize);
-            if (hitBlocker) { endP.x -= line.dir.dc * cellSize * 0.4; endP.y -= line.dir.dr * cellSize * 0.4; }
-            else { endP.x += line.dir.dc * cellSize * 0.5; endP.y += line.dir.dr * cellSize * 0.5; }
-
-            ctx.beginPath();
-            ctx.setLineDash([cellSize * 0.05, cellSize * 0.15]);
-            ctx.moveTo(startP.x + line.dir.dc * cellSize * 0.4, startP.y + line.dir.dr * cellSize * 0.4);
-            ctx.lineTo(endP.x, endP.y);
-            ctx.lineWidth = cellSize * 0.1;
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
-
-        for (const line of linesRef.current) {
             if (line.removed) continue;
-            allRemoved = false;
+            if (!line.isRemoving) allRemoved = false;
+            if (line.isError) {
+                if (!line.errorStartTime) line.errorStartTime = now;
+                if (now - line.errorStartTime > 600) { line.isError = false; line.errorStartTime = null; }
+            }
             if (line.isRemoving) {
                 if (!line.removeStartTime) line.removeStartTime = now;
-                const t = (now - line.removeStartTime) / 400;
-                if (t > 1) { line.removed = true; continue; }
-                line.slideDistance = (t * t * t) * (N * 1.5);
-            } else if (line.isError) {
-                if (!line.errorStartTime) line.errorStartTime = now;
-                const t = (now - line.errorStartTime) / 400;
-                if (t > 1) { line.isError = false; line.errorStartTime = null; line.slideDistance = 0; }
-                else line.slideDistance = Math.sin(t * Math.PI) * 0.4;
+                const elapsed = now - line.removeStartTime;
+                const duration = 400;
+                line.slideDistance = (elapsed / duration) * (N + line.body.length);
+                if (elapsed > duration) { line.removed = true; line.isRemoving = false; continue; }
             }
 
             ctx.beginPath();
@@ -254,10 +256,7 @@ const Arrows = () => {
             ctx.restore();
         }
 
-        if (allRemoved && linesRef.current.length > 0) {
-            setIsWin(true);
-            return;
-        }
+        if (allRemoved && linesRef.current.length > 0) { setIsWin(true); return; }
         animationIdRef.current = requestAnimationFrame(draw);
     };
 
@@ -277,7 +276,7 @@ const Arrows = () => {
 
     const handleCanvasClick = (e) => {
         if (isWin || isGameOver) return;
-        const canvas = canvasRef.current;
+        const canvas = gameCanvasRef.current;
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
@@ -300,7 +299,6 @@ const Arrows = () => {
                 }
                 return true;
             };
-
             if (canFly()) {
                 clickedLine.isRemoving = true;
             } else if (!clickedLine.isError) {
@@ -338,77 +336,258 @@ const Arrows = () => {
     };
 
     return (
-        <GameWrapper title={`Arrows — Level ${level}`}>
-            <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-                <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                    <div style={{ fontSize: '1.2rem', letterSpacing: '4px' }}>
-                        {'❤️'.repeat(hearts)}{'🤍'.repeat(5 - hearts)}
+        <Layout>
+            <div className="ar-root">
+                <canvas ref={bgCanvasRef} className="ar-bg-canvas" />
+                <div className="ar-blob ar-blob-1" />
+                <div className="ar-blob ar-blob-2" />
+
+                <div className="ar-inner">
+                    {/* Page header */}
+                    <div className="ar-page-header">
+                        <h1 className="ar-title">
+                            <span className="ar-title-dark">Clear the</span>
+                            <span className="ar-title-purple"> Arrows.</span>
+                            <span className="ar-title-green"> Level {level}.</span>
+                        </h1>
+                        <p className="ar-subtitle">Tap an arrow with a clear path to remove it. Don't run out of hearts!</p>
+                    </div>
+
+                    {/* Status bar */}
+                    <div className="ar-status-row">
+                        <div className="ar-hearts">
+                            {'❤️'.repeat(hearts)}{'🤍'.repeat(5 - hearts)}
+                        </div>
+                        <button className="ar-restart-btn" onClick={() => initPuzzle(level)}>
+                            <RotateCcw size={15} /> Restart
+                        </button>
+                    </div>
+
+                    {/* Game board */}
+                    <div className="ar-board-wrap">
+                        <canvas
+                            ref={gameCanvasRef}
+                            width="800"
+                            height="800"
+                            className="ar-game-canvas"
+                            onClick={handleCanvasClick}
+                        />
                     </div>
                 </div>
 
-                <div className="glass-card" style={{ padding: '1rem', marginBottom: '2rem' }}>
-                    <canvas
-                        ref={canvasRef}
-                        width="800"
-                        height="800"
-                        style={{ width: '100%', height: 'auto', borderRadius: '12px', cursor: 'pointer', display: 'block' }}
-                        onClick={handleCanvasClick}
-                    />
-                </div>
-
-                <div style={{ textAlign: 'center' }}>
-                    <button className="btn-secondary" onClick={() => initPuzzle(level)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 auto' }}>
-                        <RotateCcw size={18} /> Restart Level
-                    </button>
-                </div>
-
+                {/* Payment modal */}
                 {showPayment && (
-                    <div className="modal-overlay">
-                        <div className="modal-content">
-                            <h2>Unlock Level {level}</h2>
-                            <p>Entry Fee: <span style={{ color: '#FFD700', fontWeight: 800 }}>{getCost(level)} Z Coins</span></p>
-                            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-                                Balance: <span style={{ color: '#FFD700' }}>{balance}</span> Z Coins
-                            </p>
-                            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                                <button className="btn-primary" onClick={handlePay}>Pay & Play</button>
-                                <Link to="/dashboard" className="btn-secondary"
-                                    style={{ textDecoration: 'none', padding: '0.8rem 1.5rem', borderRadius: '12px' }}>
-                                    Cancel
-                                </Link>
+                    <div className="ar-modal-overlay">
+                        <div className="ar-modal">
+                            <h2 className="ar-modal-title">Unlock Level {level}</h2>
+                            <p className="ar-modal-fee">Entry Fee: <span className="ar-coin-val">{getCost(level)} Z Coins</span></p>
+                            <p className="ar-modal-balance">Balance: <span className="ar-coin-val">{balance}</span> Z Coins</p>
+                            <div className="ar-modal-actions">
+                                <button className="ar-btn-primary" onClick={handlePay}>Pay & Play</button>
+                                <Link to="/arcade" className="ar-btn-outline">Cancel</Link>
                             </div>
                         </div>
                     </div>
                 )}
 
+                {/* Win modal */}
                 {isWin && (
-                    <div className="modal-overlay">
-                        <div className="modal-content">
-                            <h2>Level Complete!</h2>
-                            <p>You cleared all arrows and earned <span style={{ color: '#FFD700', fontWeight: 800 }}>{getCost(level) + 20} Z Coins</span>!</p>
-                            <button className="btn-primary" onClick={handleNextLevel}
-                                style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '1.5rem auto 0' }}>
-                                Next Level <ArrowRight size={18} />
-                            </button>
+                    <div className="ar-modal-overlay">
+                        <div className="ar-modal">
+                            <h2 className="ar-modal-title">🎉 Level Complete!</h2>
+                            <p className="ar-modal-fee">You earned <span className="ar-coin-val">+{getCost(level) + 20} Z Coins</span></p>
+                            <div className="ar-modal-actions">
+                                <button className="ar-btn-primary" onClick={handleNextLevel}>
+                                    Next Level <ArrowRight size={16} />
+                                </button>
+                                <Link to="/arcade" className="ar-btn-outline">Back to Arcade</Link>
+                            </div>
                         </div>
                     </div>
                 )}
 
+                {/* Game Over modal */}
                 {isGameOver && (
-                    <div className="modal-overlay">
-                        <div className="modal-content">
-                            <h2>Game Over</h2>
-                            <p>You ran out of hearts!</p>
-                            <button className="btn-primary" onClick={() => initPuzzle(level)}
-                                style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '1.5rem auto 0' }}>
-                                <RotateCcw size={18} /> Try Again
-                            </button>
+                    <div className="ar-modal-overlay">
+                        <div className="ar-modal">
+                            <h2 className="ar-modal-title">💔 Game Over</h2>
+                            <p className="ar-modal-fee">You ran out of hearts. Try again?</p>
+                            <div className="ar-modal-actions">
+                                <button className="ar-btn-primary" onClick={() => initPuzzle(level)}>
+                                    <RotateCcw size={16} /> Try Again
+                                </button>
+                                <Link to="/arcade" className="ar-btn-outline">Back to Arcade</Link>
+                            </div>
                         </div>
                     </div>
                 )}
             </div>
-        </GameWrapper>
+
+            <style>{`
+                .ar-root {
+                    position: relative;
+                    min-height: 100vh;
+                    overflow: hidden;
+                    background: linear-gradient(145deg, #faf8ff 0%, #f0f9f0 50%, #fdf6ff 100%);
+                }
+                .ar-bg-canvas {
+                    position: fixed; inset: 0;
+                    pointer-events: none; z-index: 0;
+                }
+                .ar-blob {
+                    position: fixed; border-radius: 50%;
+                    filter: blur(80px); pointer-events: none; z-index: 0;
+                }
+                .ar-blob-1 { width: 500px; height: 500px; background: rgba(142,68,173,0.07); top: -100px; right: -100px; }
+                .ar-blob-2 { width: 400px; height: 400px; background: rgba(34,197,94,0.06); bottom: 80px; left: -80px; }
+
+                .ar-inner {
+                    position: relative; z-index: 1;
+                    max-width: 720px; margin: 0 auto;
+                    padding: 3rem 2rem 5rem;
+                }
+
+                .ar-page-header { margin-bottom: 2rem; text-align: center; }
+                .ar-title {
+                    display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem;
+                    font-family: var(--font-ui);
+                    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+                    font-weight: 900; line-height: 1.15; letter-spacing: -0.5px;
+                    margin: 0 0 0.6rem;
+                }
+                .ar-title-dark { color: var(--text-primary); }
+                .ar-title-purple {
+                    background: linear-gradient(135deg, #8e44ad, #732d91);
+                    -webkit-background-clip: text; background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                }
+                .ar-title-green {
+                    background: linear-gradient(135deg, #22c55e, #16a34a);
+                    -webkit-background-clip: text; background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                }
+                .ar-subtitle {
+                    color: var(--text-secondary);
+                    font-size: 1rem; line-height: 1.6;
+                    max-width: 480px; margin: 0 auto;
+                }
+
+                .ar-status-row {
+                    display: flex; justify-content: space-between; align-items: center;
+                    margin-bottom: 1.2rem;
+                    background: rgba(255,255,255,0.85);
+                    border: 1px solid rgba(142,68,173,0.14);
+                    border-radius: 14px;
+                    padding: 0.75rem 1.2rem;
+                    backdrop-filter: blur(8px);
+                    box-shadow: 0 4px 14px rgba(142,68,173,0.06);
+                }
+                .ar-hearts {
+                    font-size: 1.2rem; letter-spacing: 4px;
+                }
+                .ar-restart-btn {
+                    display: inline-flex; align-items: center; gap: 0.4rem;
+                    background: rgba(142,68,173,0.06);
+                    border: 1px solid rgba(142,68,173,0.18);
+                    color: var(--accent-primary);
+                    padding: 0.5rem 1rem;
+                    border-radius: 999px;
+                    font-weight: 700; font-size: 0.85rem;
+                    font-family: var(--font-ui);
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .ar-restart-btn:hover {
+                    background: rgba(142,68,173,0.12);
+                    transform: translateY(-1px);
+                }
+
+                .ar-board-wrap {
+                    background: rgba(255,255,255,0.9);
+                    border: 1px solid rgba(142,68,173,0.14);
+                    border-radius: 20px;
+                    padding: 1rem;
+                    box-shadow: 0 20px 60px rgba(142,68,173,0.12), 0 4px 16px rgba(0,0,0,0.06);
+                    backdrop-filter: blur(12px);
+                }
+                .ar-game-canvas {
+                    width: 100%; height: auto;
+                    border-radius: 12px;
+                    cursor: pointer;
+                    display: block;
+                }
+
+                /* Modal */
+                .ar-modal-overlay {
+                    position: fixed; inset: 0;
+                    background: rgba(0,0,0,0.5);
+                    backdrop-filter: blur(8px);
+                    display: flex; align-items: center; justify-content: center;
+                    z-index: 1000;
+                    padding: 1rem;
+                }
+                .ar-modal {
+                    background: white;
+                    border: 1px solid rgba(142,68,173,0.18);
+                    border-radius: 20px;
+                    padding: 2.5rem 2rem;
+                    max-width: 420px; width: 100%;
+                    text-align: center;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+                }
+                .ar-modal-title {
+                    font-family: var(--font-ui);
+                    font-size: 1.6rem; font-weight: 900;
+                    color: var(--text-primary);
+                    margin: 0 0 1rem;
+                }
+                .ar-modal-fee, .ar-modal-balance {
+                    color: var(--text-secondary);
+                    margin: 0.4rem 0;
+                    font-size: 1rem;
+                }
+                .ar-coin-val { color: #FFB400; font-weight: 800; }
+                .ar-modal-actions {
+                    display: flex; gap: 0.75rem; justify-content: center;
+                    margin-top: 1.5rem; flex-wrap: wrap;
+                }
+                .ar-btn-primary {
+                    display: inline-flex; align-items: center; gap: 0.5rem;
+                    background: linear-gradient(135deg, #8e44ad, #732d91);
+                    color: white; border: none;
+                    padding: 0.85rem 1.6rem;
+                    border-radius: 999px;
+                    font-weight: 700; font-family: var(--font-ui);
+                    font-size: 0.95rem;
+                    cursor: pointer; transition: all 0.3s;
+                    box-shadow: 0 6px 20px rgba(142,68,173,0.28);
+                }
+                .ar-btn-primary:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 10px 28px rgba(142,68,173,0.38);
+                }
+                .ar-btn-outline {
+                    display: inline-flex; align-items: center;
+                    padding: 0.85rem 1.6rem;
+                    border-radius: 999px;
+                    border: 1.5px solid rgba(142,68,173,0.3);
+                    color: var(--accent-primary);
+                    background: rgba(142,68,173,0.04);
+                    font-weight: 700; font-family: var(--font-ui);
+                    font-size: 0.95rem;
+                    text-decoration: none;
+                    transition: all 0.3s;
+                }
+                .ar-btn-outline:hover {
+                    background: rgba(142,68,173,0.10);
+                    transform: translateY(-2px);
+                }
+
+                @media (max-width: 640px) {
+                    .ar-inner { padding: 2rem 1.25rem 3rem; }
+                }
+            `}</style>
+        </Layout>
     );
 };
 

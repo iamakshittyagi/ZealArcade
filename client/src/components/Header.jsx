@@ -31,7 +31,7 @@ const Header = () => {
                 {/* Logo / brand */}
                 <Link to={user ? '/arcade' : '/'} className="header-brand">
                     <img src="/assets/logo_whitebg.png" alt="Zeal Arcade" />
-                    <span className="brand-text">Zeal</span>
+                    <span className="brand-text">Zeal<span className="brand-arcade">Arcade</span></span>
                 </Link>
 
                 {/* Right-side actions */}
@@ -83,10 +83,10 @@ const Header = () => {
                     position: sticky;
                     top: 0;
                     z-index: 100;
-                    background: rgba(255, 255, 255, 0.7);
-                    backdrop-filter: blur(20px);
-                    -webkit-backdrop-filter: blur(20px);
-                    border-bottom: 1px solid var(--card-border);
+                    background: transparent;
+                    backdrop-filter: blur(16px);
+                    -webkit-backdrop-filter: blur(16px);
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
                 }
                 .header-inner {
                     max-width: 1200px;
@@ -101,21 +101,23 @@ const Header = () => {
                 .header-brand {
                     display: flex;
                     align-items: center;
-                    gap: 0.75rem;
+                    gap: 0.6rem;
+                    font-family: var(--font-ui, inherit);
+                    font-size: 1.2rem;
+                    font-weight: 800;
                     text-decoration: none;
                     color: var(--text-primary);
                 }
                 .header-brand img {
-                    height: 40px;
+                    height: 34px;
                     width: auto;
                 }
                 .brand-text {
-                    font-size: 1.5rem;
-                    font-weight: 800;
-                    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-                    -webkit-background-clip: text;
-                    background-clip: text;
-                    -webkit-text-fill-color: transparent;
+                    color: var(--text-primary);
+                }
+                .brand-arcade {
+                    color: var(--accent-primary);
+                    margin-left: 3px;
                 }
                 .header-actions {
                     display: flex;

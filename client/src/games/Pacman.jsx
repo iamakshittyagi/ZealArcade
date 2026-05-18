@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import GameWrapper from '../components/GameWrapper';
+import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
 import { RotateCcw, Play } from 'lucide-react';
 
 const Pacman = () => {
     const { updateBalance } = useGame();
     const canvasRef = useRef(null);
+    const bgCanvasRef = useRef(null);
     const [gameState, setGameState] = useState('START');
     const [score, setScore] = useState(0);
     const [highScore, setHighScore] = useState(parseInt(localStorage.getItem('pacmanHighScore')) || 0);
@@ -45,11 +46,9 @@ const Pacman = () => {
 
     const initPellets = () => {
         const p = [];
-        for (let y = 0; y < maze.length; y++) {
-            for (let x = 0; x < maze[y].length; x++) {
+        for (let y = 0; y < maze.length; y++)
+            for (let x = 0; x < maze[y].length; x++)
                 if (maze[y][x] === 0) p.push({ x, y });
-            }
-        }
         pelletsRef.current = p;
     };
 
@@ -94,8 +93,7 @@ const Pacman = () => {
         const newX = pacman.x + pacman.dir.x;
         const newY = pacman.y + pacman.dir.y;
         if (maze[newY] && maze[newY][newX] !== 1) {
-            pacman.x = newX;
-            pacman.y = newY;
+            pacman.x = newX; pacman.y = newY;
             const pelletIndex = pelletsRef.current.findIndex(p => p.x === pacman.x && p.y === pacman.y);
             if (pelletIndex !== -1) {
                 pelletsRef.current.splice(pelletIndex, 1);
@@ -111,14 +109,11 @@ const Pacman = () => {
             const possibleDirs = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
             const isAligned = Math.abs(ghost.x - Math.round(ghost.x)) < 0.1 && Math.abs(ghost.y - Math.round(ghost.y)) < 0.1;
             if (isAligned) {
-                ghost.x = Math.round(ghost.x);
-                ghost.y = Math.round(ghost.y);
-                const cnx = ghost.x + ghost.dir.x;
-                const cny = ghost.y + ghost.dir.y;
+                ghost.x = Math.round(ghost.x); ghost.y = Math.round(ghost.y);
+                const cnx = ghost.x + ghost.dir.x, cny = ghost.y + ghost.dir.y;
                 if (!maze[cny] || maze[cny][cnx] === 1 || Math.random() < 0.2) {
                     const valid = possibleDirs.filter(d => {
-                        const nx = ghost.x + d.x;
-                        const ny = ghost.y + d.y;
+                        const nx = ghost.x + d.x, ny = ghost.y + d.y;
                         return maze[ny] && maze[ny][nx] !== 1;
                     });
                     if (valid.length > 0) ghost.dir = valid[Math.floor(Math.random() * valid.length)];
@@ -126,9 +121,7 @@ const Pacman = () => {
             }
             ghost.x += ghost.dir.x * 0.25;
             ghost.y += ghost.dir.y * 0.25;
-
-            const dx = ghost.x - pacman.x;
-            const dy = ghost.y - pacman.y;
+            const dx = ghost.x - pacman.x, dy = ghost.y - pacman.y;
             if (Math.sqrt(dx * dx + dy * dy) < 0.7) triggerGameOver(score);
         });
     };
@@ -138,18 +131,15 @@ const Pacman = () => {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        for (let y = 0; y < maze.length; y++) {
-            for (let x = 0; x < maze[y].length; x++) {
+        for (let y = 0; y < maze.length; y++)
+            for (let x = 0; x < maze[y].length; x++)
                 if (maze[y][x] === 1) {
                     ctx.fillStyle = '#2121ff';
                     ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
                 }
-            }
-        }
 
         pelletsRef.current.forEach(p => {
             ctx.fillStyle = '#ffb8ae';
@@ -181,7 +171,6 @@ const Pacman = () => {
             ctx.lineTo(gx + TILE_SIZE / 2 - 2, gy + TILE_SIZE / 2 - 2);
             ctx.lineTo(gx - TILE_SIZE / 2 + 2, gy + TILE_SIZE / 2 - 2);
             ctx.fill();
-
             ctx.fillStyle = '#fff';
             ctx.beginPath();
             ctx.arc(gx - 4, gy - 2, 3, 0, Math.PI * 2);
@@ -201,13 +190,47 @@ const Pacman = () => {
     };
 
     useEffect(() => {
+        const canvas = bgCanvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let animId;
+        let W = canvas.width = window.innerWidth;
+        let H = canvas.height = window.innerHeight;
+        const dots = Array.from({ length: 45 }, () => ({
+            x: Math.random() * W, y: Math.random() * H,
+            r: Math.random() * 2 + 1,
+            vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35,
+            color: Math.random() > 0.6 ? '#22c55e' : '#8e44ad',
+        }));
+        const drawBg = () => {
+            ctx.clearRect(0, 0, W, H);
+            dots.forEach(d => {
+                d.x += d.vx; d.y += d.vy;
+                if (d.x < 0 || d.x > W) d.vx *= -1;
+                if (d.y < 0 || d.y > H) d.vy *= -1;
+                ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+                ctx.fillStyle = d.color + '55'; ctx.fill();
+            });
+            dots.forEach((a, i) => dots.slice(i + 1).forEach(b => {
+                const dist = Math.hypot(a.x - b.x, a.y - b.y);
+                if (dist < 120) {
+                    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+                    ctx.strokeStyle = `rgba(142,68,173,${0.10 * (1 - dist / 120)})`; ctx.lineWidth = 0.6; ctx.stroke();
+                }
+            }));
+            animId = requestAnimationFrame(drawBg);
+        };
+        drawBg();
+        const onResize = () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; };
+        window.addEventListener('resize', onResize);
+        return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', onResize); };
+    }, []);
+
+    useEffect(() => {
         let lastUpdate = 0;
         const loop = (ts) => {
             if (gameState === 'PLAYING') {
-                if (ts - lastUpdate > 150) {
-                    update();
-                    lastUpdate = ts;
-                }
+                if (ts - lastUpdate > 150) { update(); lastUpdate = ts; }
             }
             draw();
             animationIdRef.current = requestAnimationFrame(loop);
@@ -233,47 +256,103 @@ const Pacman = () => {
     }, [gameState]);
 
     return (
-        <GameWrapper title="Pac-Man">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-                <div style={{ display: 'flex', gap: '3rem', color: '#f1c40f', fontSize: '1.5rem', fontWeight: 800 }}>
-                    <div>Score: {score}</div>
-                    <div>Best: {highScore}</div>
+        <Layout>
+            <div className="ar-root">
+                <canvas ref={bgCanvasRef} className="ar-bg-canvas" />
+                <div className="ar-blob ar-blob-1" />
+                <div className="ar-blob ar-blob-2" />
+
+                <div className="ar-inner">
+                    <div className="ar-page-header">
+                        <h1 className="ar-title">
+                            <span className="ar-title-dark">Pac-</span>
+                            <span className="ar-title-purple">Man.</span>
+                        </h1>
+                        <p className="ar-subtitle">Eat all the pellets. Avoid the ghosts!</p>
+                    </div>
+
+                    <div className="ar-status-row">
+                        <div style={{ display: 'flex', gap: '1.5rem' }}>
+                            <div style={{ textAlign: 'center' }}>
+                                <div className="ar-stat-label">Score</div>
+                                <div className="ar-stat-val">{score}</div>
+                            </div>
+                            <div style={{ textAlign: 'center' }}>
+                                <div className="ar-stat-label">Best</div>
+                                <div className="ar-stat-val">{highScore}</div>
+                            </div>
+                        </div>
+                        <button className="ar-restart-btn" onClick={resetGame}>
+                            <RotateCcw size={15} /> Restart
+                        </button>
+                    </div>
+
+                    <div className="ar-board-wrap">
+                        <div style={{ position: 'relative' }}>
+                            <canvas
+                                ref={canvasRef}
+                                width={19 * TILE_SIZE}
+                                height={19 * TILE_SIZE}
+                                className="ar-game-canvas"
+                            />
+                            {gameState === 'START' && (
+                                <div className="ar-modal-overlay-inline">
+                                    <h2 className="ar-modal-title">Ready?</h2>
+                                    <div className="ar-modal-actions">
+                                        <button onClick={() => setGameState('PLAYING')} className="ar-btn-primary">
+                                            <Play size={16} /> Start Game
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            {gameState === 'GAME_OVER' && (
+                                <div className="ar-modal-overlay-inline">
+                                    <h2 className="ar-modal-title">💔 Game Over</h2>
+                                    <p className="ar-modal-fee">Earned: <span className="ar-coin-val">+{score} Z Coins</span></p>
+                                    <div className="ar-modal-actions">
+                                        <button onClick={resetGame} className="ar-btn-primary">
+                                            <RotateCcw size={16} /> Play Again
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <p className="ar-hint">Use Arrow Keys to move</p>
                 </div>
 
-                <div style={{ position: 'relative', width: 'fit-content', background: '#000', padding: '10px', borderRadius: '12px', border: '4px solid #2121ff' }}>
-                    <canvas ref={canvasRef} width={19 * TILE_SIZE} height={19 * TILE_SIZE} style={{ display: 'block' }} />
-
-                    {gameState === 'START' && (
-                        <div style={{
-                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                            background: 'rgba(0, 0, 0, 0.6)', borderRadius: '12px'
-                        }}>
-                            <h2 style={{ color: '#f1c40f', fontSize: '2.5rem', marginBottom: '1rem' }}>Ready?</h2>
-                            <button onClick={() => setGameState('PLAYING')} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1c40f', color: '#000' }}>
-                                <Play size={20} /> Start Game
-                            </button>
-                        </div>
-                    )}
-
-                    {gameState === 'GAME_OVER' && (
-                        <div style={{
-                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                            borderRadius: '12px'
-                        }}>
-                            <h2 style={{ color: '#f1c40f', fontSize: '2.5rem', marginBottom: '0.5rem' }}>Game Over</h2>
-                            <p style={{ color: '#fff', marginBottom: '1.5rem' }}>Earned: <span style={{ color: '#FFD700', fontWeight: 600 }}>+{score}</span> Z Coins</p>
-                            <button onClick={resetGame} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1c40f', color: '#000' }}>
-                                <RotateCcw size={20} /> Play Again
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                <p style={{ color: 'var(--text-secondary)' }}>Use Arrow Keys to Move</p>
+                <style>{`
+                    .ar-root { position: relative; min-height: 100vh; overflow: hidden; background: linear-gradient(145deg, #faf8ff 0%, #f0f9f0 50%, #fdf6ff 100%); }
+                    .ar-bg-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+                    .ar-blob { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; }
+                    .ar-blob-1 { width: 500px; height: 500px; background: rgba(142,68,173,0.07); top: -100px; right: -100px; }
+                    .ar-blob-2 { width: 400px; height: 400px; background: rgba(34,197,94,0.06); bottom: 80px; left: -80px; }
+                    .ar-inner { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: 3rem 2rem 5rem; }
+                    .ar-page-header { margin-bottom: 2rem; text-align: center; }
+                    .ar-title { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem; font-family: var(--font-ui); font-size: clamp(1.8rem, 3.5vw, 2.6rem); font-weight: 900; line-height: 1.15; letter-spacing: -0.5px; margin: 0 0 0.6rem; }
+                    .ar-title-dark { color: var(--text-primary); }
+                    .ar-title-purple { background: linear-gradient(135deg, #8e44ad, #732d91); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+                    .ar-subtitle { color: var(--text-secondary); font-size: 1rem; line-height: 1.6; max-width: 480px; margin: 0 auto; }
+                    .ar-status-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; background: rgba(255,255,255,0.85); border: 1px solid rgba(142,68,173,0.14); border-radius: 14px; padding: 0.75rem 1.2rem; backdrop-filter: blur(8px); box-shadow: 0 4px 14px rgba(142,68,173,0.06); }
+                    .ar-stat-label { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+                    .ar-stat-val { font-size: 1.3rem; font-weight: 800; color: #8e44ad; }
+                    .ar-restart-btn { display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(142,68,173,0.06); border: 1px solid rgba(142,68,173,0.18); color: var(--accent-primary); padding: 0.5rem 1rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem; font-family: var(--font-ui); cursor: pointer; transition: all 0.2s; }
+                    .ar-restart-btn:hover { background: rgba(142,68,173,0.12); transform: translateY(-1px); }
+                    .ar-board-wrap { background: rgba(255,255,255,0.9); border: 1px solid rgba(142,68,173,0.14); border-radius: 20px; padding: 1rem; box-shadow: 0 20px 60px rgba(142,68,173,0.12), 0 4px 16px rgba(0,0,0,0.06); backdrop-filter: blur(12px); }
+                    .ar-game-canvas { width: 100%; height: auto; border-radius: 12px; display: block; }
+                    .ar-modal-overlay-inline { position: absolute; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(6px); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; gap: 0.75rem; }
+                    .ar-modal-title { font-family: var(--font-ui); font-size: 1.6rem; font-weight: 900; color: white; margin: 0; }
+                    .ar-modal-fee { color: rgba(255,255,255,0.85); margin: 0; font-size: 1rem; }
+                    .ar-coin-val { color: #FFB400; font-weight: 800; }
+                    .ar-modal-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+                    .ar-btn-primary { display: inline-flex; align-items: center; gap: 0.5rem; background: linear-gradient(135deg, #8e44ad, #732d91); color: white; border: none; padding: 0.85rem 1.6rem; border-radius: 999px; font-weight: 700; font-family: var(--font-ui); font-size: 0.95rem; cursor: pointer; transition: all 0.3s; box-shadow: 0 6px 20px rgba(142,68,173,0.28); }
+                    .ar-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(142,68,173,0.38); }
+                    .ar-hint { color: var(--text-secondary); font-size: 0.9rem; text-align: center; margin-top: 1rem; }
+                    @media (max-width: 640px) { .ar-inner { padding: 2rem 1.25rem 3rem; } }
+                `}</style>
             </div>
-        </GameWrapper>
+        </Layout>
     );
 };
 
