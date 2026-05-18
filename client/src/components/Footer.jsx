@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Twitter, Mail, Heart, Code2 } from 'lucide-react';
+import { Heart, Code2 } from 'lucide-react';
 
 const Footer = () => {
     const year = new Date().getFullYear();
@@ -9,7 +9,7 @@ const Footer = () => {
         <footer className="site-footer">
             <div className="footer-inner">
                 <div className="footer-grid">
-                    {/* Brand column */}
+                    {/* Brand */}
                     <div className="footer-col">
                         <div className="footer-brand">
                             <img src="/assets/logo_whitebg.png" alt="Zeal Arcade" />
@@ -20,7 +20,7 @@ const Footer = () => {
                         </p>
                     </div>
 
-                    {/* Navigation */}
+                    {/* Explore */}
                     <div className="footer-col">
                         <h4>Explore</h4>
                         <Link to="/arcade">Arcade</Link>
@@ -29,37 +29,30 @@ const Footer = () => {
                         <Link to="/signup">Sign Up</Link>
                     </div>
 
-                    {/* Games */}
+                    {/* Popular Games */}
                     <div className="footer-col">
                         <h4>Popular Games</h4>
                         <Link to="/games/chess">Chess</Link>
                         <Link to="/games/ludo">Ludo</Link>
                         <Link to="/games/snake-ladder">Snake & Ladder</Link>
                         <Link to="/games/tic-tac-toe">Tic-Tac-Toe</Link>
+                        <Link to="/games/snake">Snake</Link>
+                        <Link to="/games/connect-four">Connect Four</Link>
                     </div>
 
-                    {/* Connect */}
+                    {/* Team GitHub */}
                     <div className="footer-col">
-                        <h4>Connect</h4>
-                        <div className="social-links">
-                            <a href="https://github.com" target="_blank" rel="noreferrer noopener" aria-label="GitHub">
-                                <Code2 size={20} />
-                            </a>
-                            <a href="https://twitter.com" target="_blank" rel="noreferrer noopener" aria-label="Twitter">
-                                <Twitter size={20} />
-                            </a>
-                            <a href="mailto:hello@zealarcade.com" aria-label="Email">
-                                <Mail size={20} />
-                            </a>
-                        </div>
+                        <h4>Our Team</h4>
+                        <a href="https://github.com/iamakshittyagi" target="_blank" rel="noopener noreferrer" className="team-link"><Code2 size={14} />Akshit Tyagi</a>
+                        <a href="https://github.com/SRIKARKRISHNAC" target="_blank" rel="noopener noreferrer" className="team-link"><Code2 size={14} />Srikar Krishna</a>
+                        <a href="https://github.com/A-Jayanth-03" target="_blank" rel="noopener noreferrer" className="team-link"><Code2 size={14} />Allada Jayanth</a>
+                        <a href="https://github.com/Zoo57" target="_blank" rel="noopener noreferrer" className="team-link"><Code2 size={14} />Zuha Fathima</a>
                     </div>
                 </div>
 
                 <div className="footer-bottom">
-                    <p>© {year} Zeal Arcade. All rights reserved.</p>
-                    <p className="made-with">
-                        Made with <Heart size={14} fill="#ef4444" color="#ef4444" /> by the Zeal team
-                    </p>
+                    <p>© {year} Zeal Arcade. Project Work.</p>
+    
                 </div>
             </div>
 
@@ -103,6 +96,11 @@ const Footer = () => {
                 .footer-col a:hover {
                     color: var(--accent-primary);
                 }
+                .team-link {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                }
                 .footer-brand {
                     display: flex;
                     align-items: center;
@@ -126,27 +124,6 @@ const Footer = () => {
                     font-size: 0.95rem;
                     line-height: 1.6;
                     max-width: 320px;
-                }
-                .social-links {
-                    display: flex;
-                    gap: 0.75rem;
-                }
-                .social-links a {
-                    width: 40px;
-                    height: 40px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: var(--card-bg);
-                    border: 1px solid var(--card-border);
-                    border-radius: 10px;
-                    transition: all 0.2s;
-                }
-                .social-links a:hover {
-                    background: var(--accent-primary);
-                    color: white;
-                    border-color: var(--accent-primary);
-                    transform: translateY(-2px);
                 }
                 .footer-bottom {
                     border-top: 1px solid var(--card-border);

@@ -5,7 +5,7 @@
 }
 
 body {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   background-color: var(--bg-color);
   color: var(--text-primary);
   min-height: 100vh;
@@ -89,6 +89,7 @@ body::before {
   font-weight: 800;
   letter-spacing: -1px;
   margin-bottom: var(--space-xs);
+  font-family: var(--font-ui);
 }
 
 .accent {
@@ -102,6 +103,7 @@ body::before {
   font-size: 1.1rem;
   color: var(--text-secondary);
   font-weight: 300;
+  font-family: var(--font-body);
 }
 
 /* ── Reusable components ─────────────────────── */
@@ -127,7 +129,8 @@ body::before {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-family: inherit;
+  font-family: var(--font-ui);
+  letter-spacing: 0.05em;
 }
 
 .btn-primary:hover {
@@ -144,11 +147,19 @@ body::before {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-family: inherit;
+  font-family: var(--font-ui);
+  letter-spacing: 0.05em;
 }
 
 .btn-secondary:hover {
   background: var(--card-bg);
+}
+
+/* ── Arcade text utility ─────────────────────── */
+.arcade-text {
+  font-family: var(--font-arcade);
+  letter-spacing: 0.05em;
+  line-height: 1.8;
 }
 
 /* ── Modal ───────────────────────────────────── */
@@ -176,4 +187,5 @@ body::before {
   max-width: 400px;
   text-align: center;
   border: 1px solid rgba(155, 89, 182, 0.2);
+  font-family: var(--font-body);
 }
