@@ -107,7 +107,7 @@ const Welcome = () => {
                         </h1>
 
                         <p className="wl-desc">
-                            More than ten classic games now reimagained in a mini arcade where you can compete both with computer and your friends.
+                            All your favorite classic games, now reimagained in a mini arcade!!
                             Earn coins, climb leaderboards and have fun.
                         </p>
 

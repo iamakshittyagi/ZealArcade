@@ -1,59 +1,81 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { registerUser, loginUser, fetchMe } from '../api/auth';
+import api from '../api/axios';
 
 const GameContext = createContext();
 
-const STARTING_BALANCE = 100;
-
-// Helpers — keep localStorage logic in one place
-const loadBalance = (username) => {
-    if (!username) return 0;
-    const saved = localStorage.getItem(`zealux_balance_${username}`);
-    return saved !== null ? parseInt(saved, 10) : STARTING_BALANCE;
-};
-
-const saveBalance = (username, amount) => {
-    if (!username) return;
-    localStorage.setItem(`zealux_balance_${username}`, String(amount));
-};
-
 export const GameProvider = ({ children }) => {
-    // Initialize from localStorage so a page refresh keeps the user logged in
-    const [user, setUser] = useState(() => localStorage.getItem('zealUser'));
-    const [balance, setBalance] = useState(() => loadBalance(localStorage.getItem('zealUser')));
+  const [user, setUser] = useState(null);
+  const [balance, setBalance] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-    // Whenever `user` changes (login, logout, switch account), sync everything
-    useEffect(() => {
-        if (user) {
-            localStorage.setItem('zealUser', user);
-            const newBalance = loadBalance(user);
-            setBalance(newBalance);
-            // Ensure first-time users have their starting balance persisted
-            if (localStorage.getItem(`zealux_balance_${user}`) === null) {
-                saveBalance(user, STARTING_BALANCE);
-            }
-        } else {
-            localStorage.removeItem('zealUser');
-            setBalance(0);
-        }
-    }, [user]);
+  // On first mount: validate stored token and restore session
+  useEffect(() => {
+    const token = localStorage.getItem('zealToken');
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    fetchMe()
+      .then(({ user }) => {
+        setUser(user);
+        setBalance(user.coins ?? 100);
+      })
+      .catch(() => {
+        setUser(null);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
-    const login = (username) => setUser(username);
+  // REGISTER
+  const register = async ({ username, email, password }) => {
+    const { token, user } = await registerUser({ username, email, password });
+    localStorage.setItem('zealToken', token);
+    localStorage.setItem('zealUser', user.username);
+    setUser(user);
+    setBalance(user.coins ?? 100);
+    return user;
+  };
 
-    const logout = () => setUser(null);
+  // LOGIN
+  const login = async ({ username, password }) => {
+    const { token, user } = await loginUser({ username, password });
+    localStorage.setItem('zealToken', token);
+    localStorage.setItem('zealUser', user.username);
+    setUser(user);
+    setBalance(user.coins ?? 100);
+    return user;
+  };
 
-    const updateBalance = (amount) => {
-        setBalance(prev => {
-            const next = prev + amount;
-            saveBalance(user, next);
-            return next;
-        });
-    };
+  // LOGOUT
+  const logout = () => {
+    localStorage.removeItem('zealToken');
+    localStorage.removeItem('zealUser');
+    setUser(null);
+    setBalance(0);
+  };
 
-    return (
-        <GameContext.Provider value={{ user, balance, login, logout, updateBalance }}>
-            {children}
-        </GameContext.Provider>
-    );
+  // UPDATE BALANCE — now hits backend, updates DB
+  const updateBalance = async (delta) => {
+    // Optimistic UI update
+    setBalance(prev => prev + delta);
+    try {
+      const res = await api.post('/auth/coins', { delta });
+      setBalance(res.data.coins);
+    } catch (err) {
+      // If it fails, roll back
+      setBalance(prev => prev - delta);
+      console.error('Failed to update coins:', err);
+    }
+  };
+
+  return (
+    <GameContext.Provider
+      value={{ user, balance, loading, login, register, logout, updateBalance }}
+    >
+      {children}
+    </GameContext.Provider>
+  );
 };
 
 export const useGame = () => useContext(GameContext);

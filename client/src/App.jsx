@@ -28,9 +28,9 @@ import HandSlap from './games/HandSlap';
 import RPS from './games/RPS';
 import AirHockey from './games/AirHockey';
 
-// Route guard — redirects to /login if no user is logged in
 const ProtectedRoute = ({ children }) => {
-    const { user } = useGame();
+    const { user, loading } = useGame();
+    if (loading) return null;  // or a spinner if you want
     if (!user) return <Navigate to="/login" replace />;
     return children;
 };

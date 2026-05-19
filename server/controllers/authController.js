@@ -15,7 +15,6 @@ export const register = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    // Basic validation
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'All fields are required' });
     }
@@ -23,18 +22,15 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
-    // Check if email or username already exists
     const existing = await User.findOne({ $or: [{ email }, { username }] });
     if (existing) {
       return res.status(409).json({ error: 'Email or username already in use' });
     }
 
-    // Create user
     const user = new User({ username, email });
-    await user.setPassword(password);   // hashes the password
+    await user.setPassword(password);
     await user.save();
 
-    // Issue JWT
     const token = generateToken(user);
 
     res.status(201).json({
@@ -57,23 +53,19 @@ export const login = async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    // Find user by username
     const user = await User.findOne({ username });
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Verify password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Update last login time
     user.lastLogin = new Date();
     await user.save();
 
-    // Issue JWT
     const token = generateToken(user);
 
     res.json({
@@ -97,5 +89,23 @@ export const getMe = async (req, res) => {
     res.json({ user });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/auth/coins — update current user's coin balance
+export const updateCoins = async (req, res) => {
+  try {
+    const { delta } = req.body;
+    if (typeof delta !== 'number') {
+      return res.status(400).json({ error: 'delta must be a number' });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $inc: { coins: delta } },
+      { new: true }
+    );
+    res.json({ coins: user.coins });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };

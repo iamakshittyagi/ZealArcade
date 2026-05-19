@@ -27,10 +27,8 @@ const userSchema = new mongoose.Schema({
     enum: ['player', 'admin'],
     default: 'player'
   },
-  totalGamesPlayed: {
-    type: Number,
-    default: 0
-  },
+ totalGamesPlayed: { type: Number, default: 0 },
+  coins: { type: Number, default: 100 },
   lastLogin: Date
 }, {
   timestamps: true   // adds createdAt and updatedAt automatically

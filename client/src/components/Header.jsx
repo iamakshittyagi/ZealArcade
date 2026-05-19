@@ -7,22 +7,34 @@ const Header = () => {
     const { user, balance, logout, updateBalance } = useGame();
     const navigate = useNavigate();
 
-    const handleLogout = () => {
-        logout();
-        navigate('/');
-    };
+   const handleLogout = () => {
+    logout();
+    setTimeout(() => navigate('/'), 0);
+};
 
-    const handleRefer = () => {
-        const link = `https://zealarcade.com/signup?ref=${user}`;
-        alert(`Referral link generated!\n\n${link}\n\nShare this with a friend! We've added 500 Z Coins to your account as an instant bonus!`);
-        updateBalance(500);
-        localStorage.setItem(`lastRefer_${user}`, Date.now().toString());
-    };
+   const handleRefer = () => {
+    const link = `https://zealarcade.com/signup?ref=${user.username}`;
+    alert(`Referral link generated!\n\n${link}\n\nShare this with a friend! We've added 500 Z Coins to your account as an instant bonus!`);
+    updateBalance(500);
+    localStorage.setItem(`lastRefer_${user.username}`, Date.now().toString());
+};
 
-    // ⚠️ DEV CHEAT — remove before deploying
-    const handleDevCheat = () => updateBalance(100000);
+    // ⚠️ DEV CHEAT — gated to 5-hour cooldown
+const handleDevCheat = () => {
+    const lastCheat = user ? localStorage.getItem(`lastCheat_${user.username}`) : null;
+    const COOLDOWN_MS = 5 * 60 * 60 * 1000;  // 5 hours
 
-    const lastRefer = user ? localStorage.getItem(`lastRefer_${user}`) : null;
+    if (lastCheat && (Date.now() - parseInt(lastCheat)) < COOLDOWN_MS) {
+        const hoursLeft = Math.ceil((COOLDOWN_MS - (Date.now() - parseInt(lastCheat))) / (60 * 60 * 1000));
+        alert(`Cooldown active. Try again in ~${hoursLeft} hour(s).`);
+        return;
+    }
+
+    updateBalance(1000);
+    localStorage.setItem(`lastCheat_${user.username}`, Date.now().toString());
+};
+
+    const lastRefer = user ? localStorage.getItem(`lastRefer_${user.username}`) : null;
     const canRefer = !lastRefer || (Date.now() - parseInt(lastRefer)) > 24 * 60 * 60 * 1000;
 
     return (
@@ -38,12 +50,11 @@ const Header = () => {
                 <div className="header-actions">
                     {user ? (
                         <>
-                            <span className="welcome-text">Welcome, <strong>{user}</strong></span>
+                           <span className="welcome-text">Welcome, <strong>{user.username}</strong></span>
 
-                            {/* ⚠️ DEV CHEAT — remove before deploying */}
-                            <button onClick={handleDevCheat} className="header-btn dev-btn" title="Dev: add 100k">
-                                <Zap size={16} /> +100k
-                            </button>
+                            <button onClick={handleDevCheat} className="header-btn dev-btn" title="Add 1000 coins (5h cooldown)">
+    <Zap size={16} /> +1000
+</button>
 
                             {canRefer && (
                                 <button onClick={handleRefer} className="header-btn refer-btn">

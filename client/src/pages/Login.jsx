@@ -63,25 +63,23 @@ const Login = () => {
         return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', onResize); };
     }, []);
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        setError('');
-        setLoading(true);
-        setTimeout(() => {
-            if (username === 'testuser' && password === 'test123') {
-                login(username);
-                navigate('/arcade');
-            } else {
-                setError('Invalid credentials. Try testuser / test123');
-                setLoading(false);
-            }
-        }, 700);
-    };
-
+    const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+        await login({ username, password });
+        navigate('/arcade');
+    } catch (err) {
+        const msg = err.response?.data?.error || 'Login failed. Please try again.';
+        setError(msg);
+        setLoading(false);
+    }
+};
     const fields = [
-        { id: 'username', label: 'Username', type: 'text', value: username, setter: setUsername, placeholder: 'Enter your username', icon: '👤' },
-        { id: 'password', label: 'Password', type: 'password', value: password, setter: setPassword, placeholder: 'Enter your password', icon: '🔒' },
-    ];
+    { id: 'username', label: 'Username', type: 'text', value: username, setter: setUsername, placeholder: 'Enter your username', icon: '👤' },
+    { id: 'password', label: 'Password', type: 'password', value: password, setter: setPassword, placeholder: 'Enter your password', icon: '🔒' },
+];
 
     return (
         <Layout showHeader={false} showFooter={false}>

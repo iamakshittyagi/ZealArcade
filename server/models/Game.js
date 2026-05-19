@@ -24,7 +24,7 @@ const gameSchema = new mongoose.Schema({
   rewardOnWin: { type: Number, default: 50 }
 }, { timestamps: true });
 
-gameSchema.index({ gameId: 1 });
+
 gameSchema.index({ type: 1 });
 
 const Game = mongoose.model('Game', gameSchema);

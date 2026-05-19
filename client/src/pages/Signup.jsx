@@ -5,12 +5,13 @@ import Layout from '../components/Layout';
 
 const Signup = () => {
     const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [focusedField, setFocusedField] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const { login } = useGame();
+    const { register } = useGame();
     const navigate = useNavigate();
     const canvasRef = useRef(null);
 
@@ -68,25 +69,41 @@ const Signup = () => {
         return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', onResize); };
     }, []);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
-        if (!username.trim() || !password.trim()) return;
+
+        // Validation
+        if (!username.trim() || !email.trim() || !password.trim()) {
+            setError('Please fill in all fields.');
+            return;
+        }
         if (password !== confirmPassword) {
             setError('Passwords do not match.');
             return;
         }
+        if (password.length < 6) {
+            setError('Password must be at least 6 characters.');
+            return;
+        }
+
         setLoading(true);
-        setTimeout(() => {
+        try {
+            await register({ username, email, password });
+            // Clean up any leftover localStorage from previous demo logic
             localStorage.removeItem('snake_highscore');
             localStorage.removeItem('arrowsLevel');
-            login(username);
             navigate('/arcade');
-        }, 700);
+        } catch (err) {
+            const msg = err.response?.data?.error || 'Registration failed. Please try again.';
+            setError(msg);
+            setLoading(false);
+        }
     };
 
     const fields = [
         { id: 'username', label: 'Username', type: 'text', value: username, setter: setUsername, placeholder: 'Choose a username', icon: '👤' },
+        { id: 'email', label: 'Email', type: 'email', value: email, setter: setEmail, placeholder: 'Enter your email', icon: '📧' },
         { id: 'password', label: 'Password', type: 'password', value: password, setter: setPassword, placeholder: 'Create a password', icon: '🔒' },
         { id: 'confirm', label: 'Confirm Password', type: 'password', value: confirmPassword, setter: setConfirmPassword, placeholder: 'Confirm your password', icon: '✅' },
     ];
@@ -169,7 +186,7 @@ const Signup = () => {
                                         <input
                                             type={f.type}
                                             value={f.value}
-                                            onChange={e => f.setter(e.target.value)}
+                                            onChange={e => { f.setter(e.target.value); setError(''); }}
                                             placeholder={f.placeholder}
                                             className="su-input"
                                             onFocus={() => setFocusedField(f.id)}
@@ -333,28 +350,6 @@ const Signup = () => {
                     display: flex;
                     flex-direction: column;
                     gap: 1.8rem;
-                }
-                .su-badge {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    background: rgba(34,197,94,0.08);
-                    border: 1px solid rgba(34,197,94,0.25);
-                    border-radius: 999px;
-                    padding: 0.35rem 1rem;
-                    font-size: 0.78rem;
-                    font-weight: 700;
-                    color: #16a34a;
-                    font-family: var(--font-ui);
-                    letter-spacing: 0.06em;
-                    text-transform: uppercase;
-                    width: fit-content;
-                }
-                .su-badge-dot {
-                    width: 7px; height: 7px;
-                    border-radius: 50%;
-                    background: #22c55e;
-                    animation: pulse 1.8s infinite;
                 }
                 .su-headline {
                     display: flex;

@@ -1,24 +1,79 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { Play, RotateCcw } from 'lucide-react';
 
 const GRID_SIZE = 20;
 const INITIAL_SNAKE = [{ x: 10, y: 10 }, { x: 10, y: 11 }, { x: 10, y: 12 }];
 const INITIAL_DIRECTION = { x: 0, y: -1 };
 const SPEED = 150;
+const INITIAL_FOOD = { x: 5, y: 5 };
 
 const Snake = () => {
-    const { updateBalance } = useGame();
+    const { updateBalance, refreshBalance } = useGame();
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
+
     const [snake, setSnake] = useState(INITIAL_SNAKE);
-    const [food, setFood] = useState({ x: 5, y: 5 });
+    const [food, setFood] = useState(INITIAL_FOOD);
     const [direction, setDirection] = useState(INITIAL_DIRECTION);
     const [isGameOver, setIsGameOver] = useState(false);
     const [score, setScore] = useState(0);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
     const [hasStarted, setHasStarted] = useState(false);
     const [highScore, setHighScore] = useState(parseInt(localStorage.getItem('snake_highscore')) || 0);
+
+    // Refs mirror state so the game loop always reads fresh values
+    const foodRef = useRef(food);
+    const directionRef = useRef(direction);
+    const scoreRef = useRef(score);
+    useEffect(() => { foodRef.current = food; }, [food]);
+    useEffect(() => { directionRef.current = direction; }, [direction]);
+    useEffect(() => { scoreRef.current = score; }, [score]);
+
+    const gameLoopRef = useRef();
+
+    // Start backend session
+    const beginBackendSession = async () => {
+        try {
+            const { session } = await startSession('snake');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
+    };
+
+    // End backend session, with A1 reward (flat + skill bonus)
+    const finishBackendSession = async (finalScore) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const result = finalScore > 0 ? 'win' : 'loss';
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: finalScore,
+                finalState: { length: Math.floor(finalScore / 10) + 3 }
+            });
+
+            // Skill bonus: 1 coin per 10 points scored, capped at +25
+            const skillBonus = result === 'win' ? Math.min(25, Math.floor(finalScore / 10)) : 0;
+            if (skillBonus > 0) {
+                await updateBalance(skillBonus);
+            } else {
+                await refreshBalance();
+            }
+            setCoinsEarned((res.coinChange || 0) + skillBonus);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
 
     const setGameOver = (status, finalScore) => {
         setIsGameOver(status);
@@ -26,41 +81,45 @@ const Snake = () => {
             setHighScore(finalScore);
             localStorage.setItem('snake_highscore', finalScore);
         }
-        updateBalance(finalScore * 2);
+        finishBackendSession(finalScore);
     };
-
-    const gameLoopRef = useRef();
-
-    const generateFood = useCallback(() => {
-        let newFood;
-        while (true) {
-            newFood = { x: Math.floor(Math.random() * GRID_SIZE), y: Math.floor(Math.random() * GRID_SIZE) };
-            if (!snake.some(s => s.x === newFood.x && s.y === newFood.y)) break;
-        }
-        setFood(newFood);
-    }, [snake]);
 
     const moveSnake = useCallback(() => {
         if (isGameOver || isPaused || !hasStarted) return;
         setSnake(prevSnake => {
-            const head = { ...prevSnake[0] };
-            head.x += direction.x;
-            head.y += direction.y;
+            const dir = directionRef.current;
+            const currentFood = foodRef.current;
+            const head = { x: prevSnake[0].x + dir.x, y: prevSnake[0].y + dir.y };
+
+            // Collision check
             if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE ||
                 prevSnake.some(s => s.x === head.x && s.y === head.y)) {
-                setGameOver(true, score);
+                setGameOver(true, scoreRef.current);
                 return prevSnake;
             }
+
             const newSnake = [head, ...prevSnake];
-            if (head.x === food.x && head.y === food.y) {
+
+            // Did we eat food?
+            if (head.x === currentFood.x && head.y === currentFood.y) {
                 setScore(s => s + 10);
-                generateFood();
+                // Generate new food, avoiding snake
+                let newFood;
+                do {
+                    newFood = {
+                        x: Math.floor(Math.random() * GRID_SIZE),
+                        y: Math.floor(Math.random() * GRID_SIZE)
+                    };
+                } while (newSnake.some(s => s.x === newFood.x && s.y === newFood.y));
+                setFood(newFood);
+                // DON'T pop — snake grows
             } else {
                 newSnake.pop();
             }
+
             return newSnake;
         });
-    }, [direction, food, isGameOver, isPaused, hasStarted, score, generateFood]);
+    }, [isGameOver, isPaused, hasStarted]);
 
     useEffect(() => {
         gameLoopRef.current = setInterval(moveSnake, SPEED);
@@ -69,7 +128,11 @@ const Snake = () => {
 
     useEffect(() => {
         const handleKeyPress = (e) => {
-            if (!hasStarted && (e.key.startsWith('Arrow') || e.key === ' ')) { setHasStarted(true); return; }
+            if (!hasStarted && (e.key.startsWith('Arrow') || e.key === ' ')) {
+                setHasStarted(true);
+                beginBackendSession();
+                return;
+            }
             switch (e.key) {
                 case 'ArrowUp': if (direction.y !== 1) setDirection({ x: 0, y: -1 }); break;
                 case 'ArrowDown': if (direction.y !== -1) setDirection({ x: 0, y: 1 }); break;
@@ -83,16 +146,19 @@ const Snake = () => {
         return () => window.removeEventListener('keydown', handleKeyPress);
     }, [direction, hasStarted]);
 
-    const resetGame = () => {
+    const resetGame = async () => {
         setSnake(INITIAL_SNAKE);
         setDirection(INITIAL_DIRECTION);
         setIsGameOver(false);
         setScore(0);
+        setCoinsEarned(0);
         setIsPaused(false);
         setHasStarted(true);
-        generateFood();
+        setFood(INITIAL_FOOD);
+        await beginBackendSession();
     };
 
+    // Background canvas effect
     useEffect(() => {
         const canvas = bgCanvasRef.current;
         if (!canvas) return;
@@ -186,7 +252,7 @@ const Snake = () => {
                                         {!hasStarted ? 'Ready?' : isGameOver ? '💔 Game Over' : '⏸ Paused'}
                                     </h2>
                                     {isGameOver && (
-                                        <p className="ar-modal-fee">Earned: <span className="ar-coin-val">+{score * 2} Z Coins</span></p>
+                                        <p className="ar-modal-fee">Earned: <span className="ar-coin-val">+{coinsEarned} Z Coins</span></p>
                                     )}
                                     {!hasStarted && (
                                         <p className="ar-modal-fee" style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>Press any arrow key or tap below</p>
@@ -201,7 +267,7 @@ const Snake = () => {
                                                 <Play size={16} /> Resume
                                             </button>
                                         ) : (
-                                            <button onClick={() => setHasStarted(true)} className="ar-btn-primary">
+                                            <button onClick={() => { setHasStarted(true); beginBackendSession(); }} className="ar-btn-primary">
                                                 <Play size={16} /> Start Game
                                             </button>
                                         )}
