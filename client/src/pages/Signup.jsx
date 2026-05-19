@@ -125,8 +125,8 @@ const Signup = () => {
                                 <span className="su-hl-green">starts here.</span>
                             </h1>
                             <p className="su-subtext">
-                                Create your free account and get 100 coins instantly.
-                                Play 10+ classic games reimagined with a modern feel.
+                                Create your free account and get 100 coins instantly!!!
+                                Begin your arcade journey now!!!
                             </p>
 
                             {/* Perks list */}

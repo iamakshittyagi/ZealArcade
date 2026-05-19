@@ -107,8 +107,8 @@ const Welcome = () => {
                         </h1>
 
                         <p className="wl-desc">
-                            10+ reimagined classic games with glassmorphism aesthetics.
-                            Earn coins, climb leaderboards, and play forever.
+                            More than ten classic games now reimagained in a mini arcade where you can compete both with computer and your friends.
+                            Earn coins, climb leaderboards and have fun.
                         </p>
 
                         {/* CTA buttons */}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGame } from '../context/GameContext';
-import { LogOut, Coins, Gift, Sparkles, Zap, LogIn, UserPlus } from 'lucide-react';
+import { LogOut, Coins, Gift, Sparkles, Zap, LogIn, UserPlus, Trophy } from 'lucide-react';
 
 const Header = () => {
     const { user, balance, logout, updateBalance } = useGame();
@@ -50,6 +50,10 @@ const Header = () => {
                                     <Gift size={16} /> Refer
                                 </button>
                             )}
+
+                            <Link to="/leaderboard" className="header-btn leaderboard-btn">
+                                <Trophy size={16} /> Leaderboard
+                            </Link>
 
                             <Link to="/rewards" className="header-btn rewards-btn">
                                 <Sparkles size={16} /> Rewards
@@ -149,6 +153,10 @@ const Header = () => {
                 .primary-btn,
                 .rewards-btn {
                     background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+                    color: white;
+                }
+                .leaderboard-btn {
+                    background: linear-gradient(135deg, #a855f7, #7c3aed);
                     color: white;
                 }
                 .ghost-btn {

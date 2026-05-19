@@ -8,6 +8,8 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Arcade from './pages/Arcade';
 import Rewards from './pages/Rewards';
+import Leaderboard from './pages/Leaderboard';
+
 
 // Games
 import TicTacToe from './games/TicTacToe';
@@ -49,6 +51,9 @@ function App() {
                     } />
                     <Route path="/rewards" element={
                         <ProtectedRoute><Rewards /></ProtectedRoute>
+                    } />
+                    <Route path="/leaderboard" element={
+                        <ProtectedRoute><Leaderboard /></ProtectedRoute>
                     } />
 
                     {/* Games (all protected) */}
