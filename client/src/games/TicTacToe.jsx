@@ -1,15 +1,54 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw } from 'lucide-react';
 
 const TicTacToe = () => {
     const [board, setBoard] = useState(Array(9).fill(null));
-    const [isXNext, setIsXNext] = useState(true);
-    const { updateBalance } = useGame();
+    const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+    const { refreshBalance } = useGame();
     const [winner, setWinner] = useState(null);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
 
+    // Start backend session on mount
+    useEffect(() => {
+        const begin = async () => {
+            try {
+                const { session } = await startSession('tic-tac-toe');
+                sessionIdRef.current = session._id;
+            } catch (err) {
+                console.error('Could not start session:', err);
+                sessionIdRef.current = null;
+            }
+        };
+        begin();
+    }, []);
+
+    // End backend session (pure win/loss, no skill bonus)
+    const finishBackendSession = async (result) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: result === 'win' ? 1 : 0,
+                finalState: { board }
+            });
+            await refreshBalance();
+            setCoinsEarned(res.coinChange || 0);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
+
+    // Background canvas animation
     useEffect(() => {
         const canvas = bgCanvasRef.current;
         if (!canvas) return;
@@ -35,22 +74,22 @@ const TicTacToe = () => {
                 s.x += s.vx; s.y += s.vy; s.rot += s.vRot;
                 if (s.x < -50) s.x = W + 50; if (s.x > W + 50) s.x = -50;
                 if (s.y < -50) s.y = H + 50; if (s.y > H + 50) s.y = -50;
-                
+
                 ctx.save();
                 ctx.translate(s.x, s.y);
                 ctx.rotate(s.rot);
                 ctx.lineWidth = 2;
-                
+
                 if (s.isX) {
                     ctx.strokeStyle = 'rgba(142,68,173,0.1)';
                     ctx.beginPath();
-                    ctx.moveTo(-s.size/2, -s.size/2); ctx.lineTo(s.size/2, s.size/2);
-                    ctx.moveTo(s.size/2, -s.size/2); ctx.lineTo(-s.size/2, s.size/2);
+                    ctx.moveTo(-s.size / 2, -s.size / 2); ctx.lineTo(s.size / 2, s.size / 2);
+                    ctx.moveTo(s.size / 2, -s.size / 2); ctx.lineTo(-s.size / 2, s.size / 2);
                     ctx.stroke();
                 } else {
                     ctx.strokeStyle = 'rgba(34,197,94,0.1)';
                     ctx.beginPath();
-                    ctx.arc(0, 0, s.size/2, 0, Math.PI * 2);
+                    ctx.arc(0, 0, s.size / 2, 0, Math.PI * 2);
                     ctx.stroke();
                 }
                 ctx.restore();
@@ -79,28 +118,115 @@ const TicTacToe = () => {
         return null;
     };
 
+    // Smart AI: win > block > center > corners > sides
+    const findBestMove = (squares, player) => {
+        const opponent = player === 'O' ? 'X' : 'O';
+        const lines = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8],
+            [0, 3, 6], [1, 4, 7], [2, 5, 8],
+            [0, 4, 8], [2, 4, 6]
+        ];
+
+        // 1. Try to win
+        for (const [a, b, c] of lines) {
+            const cells = [squares[a], squares[b], squares[c]];
+            const playerCount = cells.filter(x => x === player).length;
+            const emptyCount = cells.filter(x => !x).length;
+            if (playerCount === 2 && emptyCount === 1) {
+                if (!squares[a]) return a;
+                if (!squares[b]) return b;
+                if (!squares[c]) return c;
+            }
+        }
+
+        // 2. Block opponent from winning
+        for (const [a, b, c] of lines) {
+            const cells = [squares[a], squares[b], squares[c]];
+            const oppCount = cells.filter(x => x === opponent).length;
+            const emptyCount = cells.filter(x => !x).length;
+            if (oppCount === 2 && emptyCount === 1) {
+                if (!squares[a]) return a;
+                if (!squares[b]) return b;
+                if (!squares[c]) return c;
+            }
+        }
+
+        // 3. Take center
+        if (!squares[4]) return 4;
+
+        // 4. Take a corner
+        const corners = [0, 2, 6, 8].filter(i => !squares[i]);
+        if (corners.length > 0) return corners[Math.floor(Math.random() * corners.length)];
+
+        // 5. Take any side
+        const sides = [1, 3, 5, 7].filter(i => !squares[i]);
+        if (sides.length > 0) return sides[Math.floor(Math.random() * sides.length)];
+
+        return null;
+    };
+
+    // Computer makes its move after a short delay
+    useEffect(() => {
+        if (isPlayerTurn || winner) return;
+        const timeout = setTimeout(() => {
+            const move = findBestMove(board, 'O');
+            if (move !== null) {
+                const newBoard = board.slice();
+                newBoard[move] = 'O';
+                setBoard(newBoard);
+                setIsPlayerTurn(true);
+
+                const win = calculateWinner(newBoard);
+                if (win === 'O') {
+                    setWinner('O');
+                    finishBackendSession('loss');
+                } else if (!newBoard.includes(null)) {
+                    setWinner('Draw');
+                    finishBackendSession('draw');
+                }
+            }
+        }, 500);
+        return () => clearTimeout(timeout);
+    }, [isPlayerTurn, board, winner]);
+
     const handleClick = (i) => {
-        if (winner || board[i]) return;
+        if (winner || board[i] || !isPlayerTurn) return;
         const newBoard = board.slice();
-        newBoard[i] = isXNext ? 'X' : 'O';
+        newBoard[i] = 'X';
         setBoard(newBoard);
-        setIsXNext(!isXNext);
 
         const win = calculateWinner(newBoard);
-        if (win) {
-            setWinner(win);
-            updateBalance(30);
+        if (win === 'X') {
+            setWinner('X');
+            finishBackendSession('win');
+            return;
         } else if (!newBoard.includes(null)) {
             setWinner('Draw');
-            updateBalance(10);
+            finishBackendSession('draw');
+            return;
+        }
+        setIsPlayerTurn(false);
+    };
+
+    const reset = async () => {
+        setBoard(Array(9).fill(null));
+        setIsPlayerTurn(true);
+        setWinner(null);
+        setCoinsEarned(0);
+        try {
+            const { session } = await startSession('tic-tac-toe');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
         }
     };
 
-    const reset = () => {
-        setBoard(Array(9).fill(null));
-        setIsXNext(true);
-        setWinner(null);
-    };
+    const statusText = winner
+        ? (winner === 'Draw'
+            ? "It's a Draw!"
+            : winner === 'X' ? 'You Win! 🎉' : 'Computer Wins!')
+        : (isPlayerTurn ? 'Your Turn (X)' : 'Computer Thinking...');
 
     return (
         <Layout>
@@ -116,16 +242,11 @@ const TicTacToe = () => {
                             <span className="ttt-title-purple"> Tac</span>
                             <span className="ttt-title-green"> Toe.</span>
                         </h1>
+                        <p className="ttt-subtitle">You're X. Beat the computer to earn coins!</p>
                     </div>
 
                     <div className="ttt-status-row">
-                        <div className="ttt-status">
-                            {winner ? (
-                                winner === 'Draw' ? "It's a Draw!" : `Player ${winner} Wins!`
-                            ) : (
-                                `Next Turn: ${isXNext ? 'X' : 'O'}`
-                            )}
-                        </div>
+                        <div className="ttt-status">{statusText}</div>
                         <button className="ttt-restart-btn" onClick={reset}>
                             <RotateCcw size={15} /> Restart
                         </button>
@@ -137,9 +258,9 @@ const TicTacToe = () => {
                                 <button
                                     key={i}
                                     onClick={() => handleClick(i)}
-                                    className={`ttt-cell ${cell ? 'filled' : ''} ${!cell && !winner ? 'playable' : ''}`}
+                                    className={`ttt-cell ${cell ? 'filled' : ''} ${!cell && !winner && isPlayerTurn ? 'playable' : ''}`}
                                     data-value={cell}
-                                    disabled={!!winner || !!cell}
+                                    disabled={!!winner || !!cell || !isPlayerTurn}
                                 >
                                     {cell}
                                 </button>
@@ -150,8 +271,12 @@ const TicTacToe = () => {
                     {winner && (
                         <div className="ttt-modal-overlay">
                             <div className="ttt-modal-content">
-                                <h2>{winner === 'Draw' ? "It's a Draw!" : `Player ${winner} Wins!`}</h2>
-                                <p className="ttt-coin-reward">+{winner === 'Draw' ? 10 : 30} Z Coins</p>
+                                <h2>
+                                    {winner === 'Draw'
+                                        ? "It's a Draw!"
+                                        : winner === 'X' ? '🎉 You Win!' : '💔 Computer Wins'}
+                                </h2>
+                                <p className="ttt-coin-reward">+{coinsEarned} Z Coins</p>
                                 <button onClick={reset} className="ttt-btn-primary">
                                     Play Again
                                 </button>
@@ -207,6 +332,11 @@ const styles = `
         background: linear-gradient(135deg, #22c55e, #16a34a);
         -webkit-background-clip: text; background-clip: text;
         -webkit-text-fill-color: transparent;
+    }
+    .ttt-subtitle {
+        color: var(--text-secondary);
+        font-size: 1rem; line-height: 1.6;
+        max-width: 480px; margin: 0.4rem auto 0;
     }
 
     .ttt-status-row {
@@ -265,7 +395,6 @@ const styles = `
         transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
     }
-    
     .ttt-cell.playable { cursor: pointer; }
     .ttt-cell.playable:hover {
         background: white;
@@ -273,11 +402,9 @@ const styles = `
         transform: translateY(-4px);
         box-shadow: 0 10px 20px rgba(142,68,173,0.1);
     }
-    
     .ttt-cell.filled {
         animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
-
     .ttt-cell[data-value="X"] { color: #8e44ad; }
     .ttt-cell[data-value="O"] { color: #22c55e; }
 
@@ -300,7 +427,7 @@ const styles = `
     }
     .ttt-modal-content h2 { font-size: 2.5rem; margin: 0 0 1rem; color: var(--text-primary); }
     .ttt-coin-reward { font-size: 1.5rem !important; color: #FFD700 !important; font-weight: 800; margin-bottom: 2rem; }
-    
+
     .ttt-btn-primary {
         background: linear-gradient(135deg, #8e44ad, #ef4444);
         color: white; border: none; padding: 1rem 3rem; border-radius: 99px;

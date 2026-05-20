@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw, Play } from 'lucide-react';
 
 const FlappyBird = () => {
-    const { updateBalance } = useGame();
+    const { updateBalance, refreshBalance } = useGame();
     const canvasRef = useRef(null);
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
+
     const [gameState, setGameState] = useState('START');
     const [score, setScore] = useState(0);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const [highScore, setHighScore] = useState(parseInt(localStorage.getItem('flappyHighScore')) || 0);
     const animationIdRef = useRef(null);
 
@@ -16,11 +20,52 @@ const FlappyBird = () => {
     const pipesRef = useRef([]);
     const framesRef = useRef(0);
 
+    // Start backend session
+    const beginBackendSession = async () => {
+        try {
+            const { session } = await startSession('flappy-bird');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
+    };
+
+    // End backend session with A1 reward (flat + skill bonus)
+    const finishBackendSession = async (finalScore) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const result = finalScore > 0 ? 'win' : 'loss';
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: finalScore,
+                finalState: { pipesPassed: finalScore }
+            });
+
+            // Skill bonus: 1 coin per pipe passed, capped at +25
+            const skillBonus = result === 'win' ? Math.min(25, finalScore) : 0;
+            if (skillBonus > 0) {
+                await updateBalance(skillBonus);
+            } else {
+                await refreshBalance();
+            }
+            setCoinsEarned((res.coinChange || 0) + skillBonus);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
+
     const resetGame = () => {
         birdRef.current = { x: 50, y: 150, width: 34, height: 24, gravity: 0.25, velocity: 0, jump: -4.5 };
         pipesRef.current = [];
         framesRef.current = 0;
         setScore(0);
+        setCoinsEarned(0);
         setGameState('START');
     };
 
@@ -31,13 +76,14 @@ const FlappyBird = () => {
             setHighScore(currentScore);
             localStorage.setItem('flappyHighScore', currentScore);
         }
-        updateBalance(currentScore * 2);
+        finishBackendSession(currentScore);
     };
 
     const handleInput = () => {
         if (gameState === 'START') {
             setGameState('PLAYING');
             birdRef.current.velocity = birdRef.current.jump;
+            beginBackendSession();
         } else if (gameState === 'PLAYING') {
             birdRef.current.velocity = birdRef.current.jump;
         } else if (gameState === 'GAME_OVER') {
@@ -301,7 +347,7 @@ const FlappyBird = () => {
                             {gameState === 'GAME_OVER' && (
                                 <div className="ar-modal-overlay-inline">
                                     <h2 className="ar-modal-title">💔 Game Over</h2>
-                                    <p className="ar-modal-fee">Earned: <span className="ar-coin-val">+{score * 2} Z Coins</span></p>
+                                    <p className="ar-modal-fee">Earned: <span className="ar-coin-val">+{coinsEarned} Z Coins</span></p>
                                     <div className="ar-modal-actions">
                                         <button onClick={resetGame} className="ar-btn-primary">
                                             <RotateCcw size={16} /> Play Again

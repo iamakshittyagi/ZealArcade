@@ -1,20 +1,59 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw } from 'lucide-react';
 
 const ROWS = 6;
 const COLS = 7;
 
 const ConnectFour = () => {
-    const { updateBalance } = useGame();
+    const { refreshBalance } = useGame();
     const [board, setBoard] = useState(Array(ROWS).fill(null).map(() => Array(COLS).fill(null)));
-    const [currentPlayer, setCurrentPlayer] = useState('red');
+    const [currentPlayer, setCurrentPlayer] = useState('red');  // red = player, yellow = computer
     const [gameActive, setGameActive] = useState(true);
-    const [status, setStatus] = useState("Red's Turn");
+    const [status, setStatus] = useState("Your Turn (Red)");
     const [winner, setWinner] = useState(null);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
 
+    // Start backend session on mount
+    useEffect(() => {
+        const begin = async () => {
+            try {
+                const { session } = await startSession('connect-four');
+                sessionIdRef.current = session._id;
+            } catch (err) {
+                console.error('Could not start session:', err);
+                sessionIdRef.current = null;
+            }
+        };
+        begin();
+    }, []);
+
+    // End backend session
+    const finishBackendSession = async (result, finalBoard) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: result === 'win' ? 1 : 0,
+                finalState: { board: finalBoard }
+            });
+            await refreshBalance();
+            setCoinsEarned(res.coinChange || 0);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
+
+    // Background canvas
     useEffect(() => {
         const canvas = bgCanvasRef.current;
         if (!canvas) return;
@@ -89,49 +128,115 @@ const ConnectFour = () => {
         return false;
     };
 
-    const handleColumnClick = (c) => {
-        if (!gameActive || winner) return;
-
-        let r = -1;
+    // Drop a chip in a column, return [newBoard, droppedRow] or [null, -1] if column full
+    const dropChip = (grid, c, player) => {
         for (let i = 0; i < ROWS; i++) {
-            if (board[i][c] === null) {
-                r = i;
-                break;
+            if (grid[i][c] === null) {
+                const newBoard = grid.map(row => [...row]);
+                newBoard[i][c] = player;
+                return [newBoard, i];
             }
         }
-        if (r === -1) return;
+        return [null, -1];
+    };
 
-        const newBoard = board.map(row => [...row]);
-        newBoard[r][c] = currentPlayer;
+    // Smart AI for computer (yellow): win > block > center-preference
+    const findBestColumn = (grid, player) => {
+        const opponent = player === 'yellow' ? 'red' : 'yellow';
+
+        // 1. Try to win
+        for (let c = 0; c < COLS; c++) {
+            const [testBoard, r] = dropChip(grid, c, player);
+            if (testBoard && checkWin(testBoard, r, c)) return c;
+        }
+
+        // 2. Block opponent's winning move
+        for (let c = 0; c < COLS; c++) {
+            const [testBoard, r] = dropChip(grid, c, opponent);
+            if (testBoard && checkWin(testBoard, r, c)) return c;
+        }
+
+        // 3. Prefer center, then nearby cols
+        const preference = [3, 2, 4, 1, 5, 0, 6];
+        for (const c of preference) {
+            if (grid[ROWS - 1][c] === null) return c;
+        }
+        return null;
+    };
+
+    // Computer's turn (yellow)
+    useEffect(() => {
+        if (currentPlayer !== 'yellow' || winner || !gameActive) return;
+        const timeout = setTimeout(() => {
+            const aiCol = findBestColumn(board, 'yellow');
+            if (aiCol === null) return;
+            const [newBoard, droppedRow] = dropChip(board, aiCol, 'yellow');
+            if (!newBoard) return;
+            setBoard(newBoard);
+
+            if (checkWin(newBoard, droppedRow, aiCol)) {
+                setWinner('yellow');
+                setGameActive(false);
+                setStatus("💔 Computer Wins");
+                finishBackendSession('loss', newBoard);
+                return;
+            }
+
+            const isDraw = newBoard.every(row => row.every(cell => cell !== null));
+            if (isDraw) {
+                setGameActive(false);
+                setStatus("It's a Draw 🤝");
+                finishBackendSession('draw', newBoard);
+                return;
+            }
+
+            setCurrentPlayer('red');
+            setStatus("Your Turn (Red)");
+        }, 600);
+        return () => clearTimeout(timeout);
+    }, [currentPlayer, board, winner, gameActive]);
+
+    const handleColumnClick = (c) => {
+        if (!gameActive || winner || currentPlayer !== 'red') return;
+
+        const [newBoard, droppedRow] = dropChip(board, c, 'red');
+        if (!newBoard) return;
         setBoard(newBoard);
 
-        if (checkWin(newBoard, r, c)) {
-            setWinner(currentPlayer);
+        if (checkWin(newBoard, droppedRow, c)) {
+            setWinner('red');
             setGameActive(false);
-            setStatus(`${currentPlayer === 'red' ? 'Red' : 'Yellow'} Wins! 🎉 (+30 Z Coins)`);
-            updateBalance(30);
+            setStatus("🎉 You Win!");
+            finishBackendSession('win', newBoard);
             return;
         }
 
         const isDraw = newBoard.every(row => row.every(cell => cell !== null));
         if (isDraw) {
             setGameActive(false);
-            setStatus("It's a Draw! 🤝 (+10 Z Coins)");
-            updateBalance(10);
+            setStatus("It's a Draw 🤝");
+            finishBackendSession('draw', newBoard);
             return;
         }
 
-        const nextPlayer = currentPlayer === 'red' ? 'yellow' : 'red';
-        setCurrentPlayer(nextPlayer);
-        setStatus(`${nextPlayer === 'red' ? "Red's" : "Yellow's"} Turn`);
+        setCurrentPlayer('yellow');
+        setStatus("Computer Thinking...");
     };
 
-    const resetGame = () => {
+    const resetGame = async () => {
         setBoard(Array(ROWS).fill(null).map(() => Array(COLS).fill(null)));
         setCurrentPlayer('red');
         setGameActive(true);
-        setStatus("Red's Turn");
+        setStatus("Your Turn (Red)");
         setWinner(null);
+        setCoinsEarned(0);
+        try {
+            const { session } = await startSession('connect-four');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
     };
 
     return (
@@ -148,13 +253,12 @@ const ConnectFour = () => {
                             <span className="c4-title-purple"> Four.</span>
                             <span className="c4-title-green"> Line 'em up.</span>
                         </h1>
+                        <p className="c4-subtitle">You're Red. Get 4 in a row to beat the computer!</p>
                     </div>
 
                     <div className="c4-status-row">
                         <div className="c4-status" style={{ color: currentPlayer === 'red' ? '#ef4444' : '#eab308' }}>
-                            {status.includes('Z Coins') ? (
-                                <>{status.split('(+')[0]}<span className="c4-coin-text">(+{status.split('(+')[1]}</span></>
-                            ) : status}
+                            {status}
                         </div>
                         <button className="c4-restart-btn" onClick={resetGame}>
                             <RotateCcw size={15} /> Restart
@@ -164,7 +268,7 @@ const ConnectFour = () => {
                     <div className="c4-board-wrap">
                         <div className="c4-board">
                             {Array.from({ length: COLS }).map((_, c) => (
-                                <div key={c} onClick={() => handleColumnClick(c)} className="c4-col" style={{ cursor: gameActive ? 'pointer' : 'default' }}>
+                                <div key={c} onClick={() => handleColumnClick(c)} className="c4-col" style={{ cursor: gameActive && currentPlayer === 'red' ? 'pointer' : 'default' }}>
                                     {Array.from({ length: ROWS }).map((_, r) => {
                                         const chip = board[r][c];
                                         return (
@@ -175,6 +279,22 @@ const ConnectFour = () => {
                             ))}
                         </div>
                     </div>
+
+                    {winner !== null || (!gameActive && winner === null) ? (
+                        <div className="c4-modal-overlay">
+                            <div className="c4-modal-content">
+                                <h2>
+                                    {winner === 'red' ? '🎉 You Win!' :
+                                     winner === 'yellow' ? '💔 Computer Wins' :
+                                     "It's a Draw 🤝"}
+                                </h2>
+                                <p className="c4-coin-reward">+{coinsEarned} Z Coins</p>
+                                <button onClick={resetGame} className="c4-btn-primary">
+                                    Play Again
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
                 </div>
 
                 <style>{styles}</style>
@@ -225,6 +345,11 @@ const styles = `
         -webkit-background-clip: text; background-clip: text;
         -webkit-text-fill-color: transparent;
     }
+    .c4-subtitle {
+        color: var(--text-secondary);
+        font-size: 1rem; line-height: 1.6;
+        max-width: 480px; margin: 0.4rem auto 0;
+    }
 
     .c4-status-row {
         display: flex; justify-content: space-between; align-items: center;
@@ -241,8 +366,7 @@ const styles = `
         font-size: 1.1rem; font-weight: 800;
         margin: 0; flex: 1;
     }
-    .c4-coin-text { color: #FFD700; text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-    
+
     .c4-restart-btn {
         display: inline-flex; align-items: center; gap: 0.4rem;
         background: rgba(142,68,173,0.06);
@@ -283,7 +407,7 @@ const styles = `
         transition: background 0.2s;
     }
     .c4-col:hover { background: rgba(255, 255, 255, 0.1); }
-    
+
     .c4-cell {
         width: min(10vw, 50px);
         aspect-ratio: 1;
@@ -300,6 +424,30 @@ const styles = `
         background: radial-gradient(circle at 30% 30%, #eab308, #a16207);
         box-shadow: 0 5px 15px rgba(234, 179, 8, 0.4), inset 0 -5px 10px rgba(0,0,0,0.3);
     }
+
+    .c4-modal-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 100; backdrop-filter: blur(8px);
+    }
+    .c4-modal-content {
+        background: white; padding: 3rem; border-radius: 24px;
+        text-align: center; font-family: var(--font-ui);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .c4-modal-content h2 { font-size: 2.2rem; margin: 0 0 1rem; color: var(--text-primary); }
+    .c4-coin-reward { font-size: 1.5rem !important; color: #FFD700 !important; font-weight: 800; margin-bottom: 2rem; }
+
+    .c4-btn-primary {
+        background: linear-gradient(135deg, #8e44ad, #ef4444);
+        color: white; border: none; padding: 1rem 3rem; border-radius: 99px;
+        font-size: 1.2rem; font-weight: 800; cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 10px 20px rgba(142,68,173,0.3);
+    }
+    .c4-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 15px 25px rgba(142,68,173,0.4); }
+
     @media (max-width: 640px) {
         .c4-inner { padding: 2rem 1.25rem 3rem; }
         .c4-board-wrap { padding: 1rem; }

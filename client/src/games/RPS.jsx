@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw } from 'lucide-react';
 
 const CHOICES = [
@@ -10,14 +11,16 @@ const CHOICES = [
 ];
 
 const RPS = () => {
-    const { updateBalance } = useGame();
+    const { refreshBalance } = useGame();
     const [userChoice, setUserChoice] = useState(null);
     const [aiChoice, setAiChoice] = useState(null);
     const [result, setResult] = useState(null);
     const [score, setScore] = useState({ user: 0, ai: 0 });
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const [isRolling, setIsRolling] = useState(false);
     const bgCanvasRef = useRef(null);
 
+    // Background animation
     useEffect(() => {
         const canvas = bgCanvasRef.current;
         if (!canvas) return;
@@ -32,11 +35,11 @@ const RPS = () => {
             size: Math.random() * 20 + 10,
             vx: (Math.random() - 0.5) * 0.8,
             vy: (Math.random() - 0.5) * 0.8,
-            type: Math.floor(Math.random() * 3), // 0: circle, 1: rect, 2: tri
+            type: Math.floor(Math.random() * 3),
             rot: Math.random() * Math.PI * 2,
             vRot: (Math.random() - 0.5) * 0.05,
-            color: CHOICES[Math.floor(Math.random() * 3)].name === 'rock' ? '#ef4444' : 
-                   CHOICES[Math.floor(Math.random() * 3)].name === 'paper' ? '#3b82f6' : '#eab308'
+            color: CHOICES[Math.floor(Math.random() * 3)].name === 'rock' ? '#ef4444' :
+                CHOICES[Math.floor(Math.random() * 3)].name === 'paper' ? '#3b82f6' : '#eab308'
         }));
 
         const draw = () => {
@@ -45,7 +48,7 @@ const RPS = () => {
                 s.x += s.vx; s.y += s.vy; s.rot += s.vRot;
                 if (s.x < -50) s.x = W + 50; if (s.x > W + 50) s.x = -50;
                 if (s.y < -50) s.y = H + 50; if (s.y > H + 50) s.y = -50;
-                
+
                 ctx.save();
                 ctx.translate(s.x, s.y);
                 ctx.rotate(s.rot);
@@ -54,7 +57,7 @@ const RPS = () => {
                 if (s.type === 0) {
                     ctx.arc(0, 0, s.size, 0, Math.PI * 2);
                 } else if (s.type === 1) {
-                    ctx.rect(-s.size/2, -s.size/2, s.size, s.size);
+                    ctx.rect(-s.size / 2, -s.size / 2, s.size, s.size);
                 } else {
                     ctx.moveTo(0, -s.size);
                     ctx.lineTo(s.size, s.size);
@@ -82,13 +85,33 @@ const RPS = () => {
         return 'ai';
     };
 
+    // Save each round to backend as its own session
+    const saveRound = async (outcome, userPick, aiPick) => {
+        try {
+            const { session } = await startSession('rps');
+            if (!session?._id) return 0;
+
+            const result = outcome === 'user' ? 'win' : outcome === 'draw' ? 'draw' : 'loss';
+            const res = await endSession(session._id, {
+                result,
+                score: outcome === 'user' ? 1 : 0,
+                finalState: { userPick, aiPick }
+            });
+            await refreshBalance();
+            return res.coinChange || 0;
+        } catch (err) {
+            console.error('Could not save round:', err);
+            return 0;
+        }
+    };
+
     const handleChoice = (choice) => {
         if (isRolling) return;
         setIsRolling(true);
         setUserChoice(choice);
         setResult(null);
+        setCoinsEarned(0);
 
-        // Suspense — flash AI choice a few times before settling
         let flashCount = 0;
         const flash = setInterval(() => {
             setAiChoice(CHOICES[Math.floor(Math.random() * 3)]);
@@ -99,14 +122,18 @@ const RPS = () => {
                 setAiChoice(finalAi);
                 const outcome = determineWinner(choice.name, finalAi.name);
                 setResult(outcome);
+
                 if (outcome === 'user') {
                     setScore(s => ({ ...s, user: s.user + 1 }));
-                    updateBalance(20);
                 } else if (outcome === 'ai') {
                     setScore(s => ({ ...s, ai: s.ai + 1 }));
-                } else {
-                    updateBalance(5);
                 }
+
+                // Save round to backend, then show earned coins
+                saveRound(outcome, choice.name, finalAi.name).then((earned) => {
+                    setCoinsEarned(earned);
+                });
+
                 setIsRolling(false);
             }
         }, 100);
@@ -117,12 +144,13 @@ const RPS = () => {
         setAiChoice(null);
         setResult(null);
         setScore({ user: 0, ai: 0 });
+        setCoinsEarned(0);
     };
 
     const resultText = {
-        user: '🎉 You Win! +20 Z Coins',
+        user: coinsEarned > 0 ? `🎉 You Win! +${coinsEarned} Z Coins` : '🎉 You Win!',
         ai: '😢 You Lose',
-        draw: '🤝 Draw! +5 Z Coins'
+        draw: '🤝 Draw'
     };
 
     return (
@@ -150,9 +178,9 @@ const RPS = () => {
                             ) : "Make your choice!"}
                         </div>
                         <div className="rps-score-chip">
-                            <span style={{color: '#3b82f6'}}>You: {score.user}</span>
-                            <span style={{color: '#444'}}>|</span>
-                            <span style={{color: '#ef4444'}}>AI: {score.ai}</span>
+                            <span style={{ color: '#3b82f6' }}>You: {score.user}</span>
+                            <span style={{ color: '#444' }}>|</span>
+                            <span style={{ color: '#ef4444' }}>AI: {score.ai}</span>
                         </div>
                         {(score.user > 0 || score.ai > 0) && (
                             <button className="rps-restart-btn" onClick={resetGame}>
@@ -345,7 +373,7 @@ const styles = `
     }
     .rps-choice-btn:active:not(.disabled) { transform: translateY(0); }
     .rps-choice-btn.disabled { opacity: 0.6; cursor: not-allowed; }
-    
+
     .rps-btn-emoji { font-size: 3.5rem; line-height: 1; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1)); }
     .rps-btn-label { font-family: var(--font-ui); font-weight: 700; color: var(--text-primary); font-size: 1.1rem; }
 

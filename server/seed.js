@@ -7,24 +7,24 @@ import Score from './models/Score.js';
 dotenv.config();
 
 const GAMES = [
-  // SINGLE-PLAYER games (vs computer / solo high-score)
+  // SCORE-BASED (singles)
   { gameId: 'snake', name: 'Snake', type: 'single', entryFee: 10, rewardOnWin: 20 },
-  { gameId: 'flappy-bird', name: 'Flappy Bird', type: 'single', entryFee: 10, rewardOnWin: 25 },
-  { gameId: 'sudoku', name: 'Sudoku', type: 'single', entryFee: 15, rewardOnWin: 50 },
-  { gameId: 'arrows', name: 'Arrows', type: 'single', entryFee: 10, rewardOnWin: 25 },
-  { gameId: 'pacman', name: 'Pac-Man', type: 'single', entryFee: 10, rewardOnWin: 30 },
+  { gameId: 'flappy-bird', name: 'Flappy Bird', type: 'single', entryFee: 10, rewardOnWin: 15 },
+  { gameId: 'pacman', name: 'Pac-Man', type: 'single', entryFee: 10, rewardOnWin: 20 },
+  { gameId: 'arrows', name: 'Arrows', type: 'single', entryFee: 10, rewardOnWin: 20 },
+  { gameId: 'sudoku', name: 'Sudoku', type: 'single', entryFee: 15, rewardOnWin: 35 },
 
-  // 1v1 games vs computer — reward on win
-  { gameId: 'tic-tac-toe', name: 'Tic-Tac-Toe', type: 'multi', entryFee: 10, rewardOnWin: 25 },
-  { gameId: 'connect-four', name: 'Connect Four', type: 'multi', entryFee: 10, rewardOnWin: 30 },
-  { gameId: 'snake-ladder', name: 'Snake & Ladder', type: 'multi', entryFee: 15, rewardOnWin: 40 },
-  { gameId: 'ludo', name: 'Ludo', type: 'multi', entryFee: 20, rewardOnWin: 60 },
-  { gameId: 'sea-battle', name: 'Sea Battle', type: 'multi', entryFee: 15, rewardOnWin: 45 },
-  { gameId: 'ping-pong', name: 'Ping Pong', type: 'multi', entryFee: 10, rewardOnWin: 30 },
-  { gameId: 'hand-slap', name: 'Hand Slap', type: 'multi', entryFee: 5, rewardOnWin: 15 },
-  { gameId: 'rps', name: 'RPS', type: 'multi', entryFee: 5, rewardOnWin: 15 },
-  { gameId: 'air-hockey', name: 'Air Hockey', type: 'multi', entryFee: 10, rewardOnWin: 30 },
-  { gameId: 'chess', name: 'Chess', type: 'multi', entryFee: 25, rewardOnWin: 100 },
+  // WIN/LOSS vs Computer (was 'multi', now all vs CPU)
+  { gameId: 'tic-tac-toe', name: 'Tic-Tac-Toe', type: 'multi', entryFee: 10, rewardOnWin: 20 },
+  { gameId: 'connect-four', name: 'Connect Four', type: 'multi', entryFee: 10, rewardOnWin: 25 },
+  { gameId: 'snake-ladder', name: 'Snake & Ladder', type: 'multi', entryFee: 15, rewardOnWin: 30 },
+  { gameId: 'ludo', name: 'Ludo', type: 'multi', entryFee: 20, rewardOnWin: 50 },
+  { gameId: 'sea-battle', name: 'Sea Battle', type: 'multi', entryFee: 15, rewardOnWin: 35 },
+  { gameId: 'ping-pong', name: 'Ping Pong', type: 'multi', entryFee: 10, rewardOnWin: 20 },
+  { gameId: 'hand-slap', name: 'Hand Slap', type: 'multi', entryFee: 5, rewardOnWin: 12 },
+  { gameId: 'rps', name: 'RPS', type: 'multi', entryFee: 5, rewardOnWin: 10 },
+  { gameId: 'air-hockey', name: 'Air Hockey', type: 'multi', entryFee: 10, rewardOnWin: 25 },
+  { gameId: 'chess', name: 'Chess', type: 'multi', entryFee: 25, rewardOnWin: 75 },
 ];
 
 const FAKE_USERS = [

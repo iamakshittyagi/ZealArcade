@@ -95,7 +95,7 @@ const Arcade = () => {
                             <p className="arc-subtitle">
                                 {activeTab === 'single'
                                     ? `${games.filter(g => g.type === 'single').length} solo experiences waiting for you`
-                                    : `${games.filter(g => g.type === 'multi').length} multiplayer battles to dominate`}
+: `${games.filter(g => g.type === 'multi').length} brain-teasing duels vs the computer`}
                             </p>
                         </div>
 
@@ -114,7 +114,7 @@ const Arcade = () => {
                                 onClick={() => setActiveTab('multi')}
                             >
                                 <Users size={16} />
-                                <span>Multi Player</span>
+                                <span>vs Computer</span>
                                 <span className="arc-tab-count">{games.filter(g => g.type === 'multi').length}</span>
                             </button>
                         </div>

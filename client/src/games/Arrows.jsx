@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import Layout from '../components/Layout';
 import { RotateCcw, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -12,22 +13,63 @@ const DIRS = [
 ];
 
 const Arrows = () => {
-    const { balance, updateBalance } = useGame();
+    const { balance, updateBalance, refreshBalance } = useGame();
     const [level, setLevel] = useState(parseInt(localStorage.getItem('arrowsLevel')) || 1);
     const [hearts, setHearts] = useState(5);
     const [isGameOver, setIsGameOver] = useState(false);
     const [isWin, setIsWin] = useState(false);
     const [showPayment, setShowPayment] = useState(false);
+    const [coinsEarned, setCoinsEarned] = useState(0);
 
     const gameCanvasRef = useRef(null);
     const bgCanvasRef = useRef(null);
     const linesRef = useRef([]);
     const animationIdRef = useRef(null);
     const NRef = useRef(20);
+    const sessionIdRef = useRef(null);
 
     const getCost = (lvl) => lvl === 1 ? 0 : Math.floor(lvl / 2) * 10;
 
-    // ── Background particle canvas (same as Welcome / Arcade / Rewards) ──
+    // Start backend session
+    const beginBackendSession = async () => {
+        try {
+            const { session } = await startSession('arrows');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
+    };
+
+    // End backend session with A1 reward
+    const finishBackendSession = async (result, currentLevel) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: currentLevel,
+                finalState: { level: currentLevel, heartsRemaining: hearts }
+            });
+
+            // Skill bonus: 5 coins per level, capped at +25
+            const skillBonus = result === 'win' ? Math.min(25, currentLevel * 5) : 0;
+            if (skillBonus > 0) {
+                await updateBalance(skillBonus);
+            } else {
+                await refreshBalance();
+            }
+            setCoinsEarned((res.coinChange || 0) + skillBonus);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
+
+    // Background particle canvas
     useEffect(() => {
         const canvas = bgCanvasRef.current;
         if (!canvas) return;
@@ -78,7 +120,7 @@ const Arrows = () => {
         return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', onResize); };
     }, []);
 
-    // ── Game logic (unchanged) ──
+    // Game logic
     const initPuzzle = (lvl) => {
         let n = 20;
         let targetLines = 0;
@@ -90,6 +132,8 @@ const Arrows = () => {
         setIsWin(false);
         setIsGameOver(false);
         setHearts(5);
+        setCoinsEarned(0);
+        beginBackendSession();
     };
 
     const generatePuzzle = (size, numLines) => {
@@ -256,7 +300,11 @@ const Arrows = () => {
             ctx.restore();
         }
 
-        if (allRemoved && linesRef.current.length > 0) { setIsWin(true); return; }
+        if (allRemoved && linesRef.current.length > 0) {
+            setIsWin(true);
+            finishBackendSession('win', level);
+            return;
+        }
         animationIdRef.current = requestAnimationFrame(draw);
     };
 
@@ -306,7 +354,10 @@ const Arrows = () => {
                 clickedLine.errorStartTime = null;
                 setHearts(h => {
                     const newH = h - 1;
-                    if (newH <= 0) setIsGameOver(true);
+                    if (newH <= 0) {
+                        setIsGameOver(true);
+                        finishBackendSession('loss', level);
+                    }
                     return newH;
                 });
             }
@@ -325,8 +376,6 @@ const Arrows = () => {
     };
 
     const handleNextLevel = () => {
-        const cost = getCost(level);
-        updateBalance(cost + 20);
         const nextLvl = level + 1;
         setIsWin(false);
         setIsGameOver(false);
@@ -343,7 +392,6 @@ const Arrows = () => {
                 <div className="ar-blob ar-blob-2" />
 
                 <div className="ar-inner">
-                    {/* Page header */}
                     <div className="ar-page-header">
                         <h1 className="ar-title">
                             <span className="ar-title-dark">Clear the</span>
@@ -353,7 +401,6 @@ const Arrows = () => {
                         <p className="ar-subtitle">Tap an arrow with a clear path to remove it. Don't run out of hearts!</p>
                     </div>
 
-                    {/* Status bar */}
                     <div className="ar-status-row">
                         <div className="ar-hearts">
                             {'❤️'.repeat(hearts)}{'🤍'.repeat(5 - hearts)}
@@ -363,7 +410,6 @@ const Arrows = () => {
                         </button>
                     </div>
 
-                    {/* Game board */}
                     <div className="ar-board-wrap">
                         <canvas
                             ref={gameCanvasRef}
@@ -375,7 +421,6 @@ const Arrows = () => {
                     </div>
                 </div>
 
-                {/* Payment modal */}
                 {showPayment && (
                     <div className="ar-modal-overlay">
                         <div className="ar-modal">
@@ -390,12 +435,11 @@ const Arrows = () => {
                     </div>
                 )}
 
-                {/* Win modal */}
                 {isWin && (
                     <div className="ar-modal-overlay">
                         <div className="ar-modal">
                             <h2 className="ar-modal-title">🎉 Level Complete!</h2>
-                            <p className="ar-modal-fee">You earned <span className="ar-coin-val">+{getCost(level) + 20} Z Coins</span></p>
+                            <p className="ar-modal-fee">You earned <span className="ar-coin-val">+{coinsEarned} Z Coins</span></p>
                             <div className="ar-modal-actions">
                                 <button className="ar-btn-primary" onClick={handleNextLevel}>
                                     Next Level <ArrowRight size={16} />
@@ -406,7 +450,6 @@ const Arrows = () => {
                     </div>
                 )}
 
-                {/* Game Over modal */}
                 {isGameOver && (
                     <div className="ar-modal-overlay">
                         <div className="ar-modal">
@@ -424,168 +467,35 @@ const Arrows = () => {
             </div>
 
             <style>{`
-                .ar-root {
-                    position: relative;
-                    min-height: 100vh;
-                    overflow: hidden;
-                    background: linear-gradient(145deg, #faf8ff 0%, #f0f9f0 50%, #fdf6ff 100%);
-                }
-                .ar-bg-canvas {
-                    position: fixed; inset: 0;
-                    pointer-events: none; z-index: 0;
-                }
-                .ar-blob {
-                    position: fixed; border-radius: 50%;
-                    filter: blur(80px); pointer-events: none; z-index: 0;
-                }
+                .ar-root { position: relative; min-height: 100vh; overflow: hidden; background: linear-gradient(145deg, #faf8ff 0%, #f0f9f0 50%, #fdf6ff 100%); }
+                .ar-bg-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+                .ar-blob { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; }
                 .ar-blob-1 { width: 500px; height: 500px; background: rgba(142,68,173,0.07); top: -100px; right: -100px; }
                 .ar-blob-2 { width: 400px; height: 400px; background: rgba(34,197,94,0.06); bottom: 80px; left: -80px; }
-
-                .ar-inner {
-                    position: relative; z-index: 1;
-                    max-width: 720px; margin: 0 auto;
-                    padding: 3rem 2rem 5rem;
-                }
-
+                .ar-inner { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: 3rem 2rem 5rem; }
                 .ar-page-header { margin-bottom: 2rem; text-align: center; }
-                .ar-title {
-                    display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem;
-                    font-family: var(--font-ui);
-                    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
-                    font-weight: 900; line-height: 1.15; letter-spacing: -0.5px;
-                    margin: 0 0 0.6rem;
-                }
+                .ar-title { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem; font-family: var(--font-ui); font-size: clamp(1.8rem, 3.5vw, 2.6rem); font-weight: 900; line-height: 1.15; letter-spacing: -0.5px; margin: 0 0 0.6rem; }
                 .ar-title-dark { color: var(--text-primary); }
-                .ar-title-purple {
-                    background: linear-gradient(135deg, #8e44ad, #732d91);
-                    -webkit-background-clip: text; background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                }
-                .ar-title-green {
-                    background: linear-gradient(135deg, #22c55e, #16a34a);
-                    -webkit-background-clip: text; background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                }
-                .ar-subtitle {
-                    color: var(--text-secondary);
-                    font-size: 1rem; line-height: 1.6;
-                    max-width: 480px; margin: 0 auto;
-                }
-
-                .ar-status-row {
-                    display: flex; justify-content: space-between; align-items: center;
-                    margin-bottom: 1.2rem;
-                    background: rgba(255,255,255,0.85);
-                    border: 1px solid rgba(142,68,173,0.14);
-                    border-radius: 14px;
-                    padding: 0.75rem 1.2rem;
-                    backdrop-filter: blur(8px);
-                    box-shadow: 0 4px 14px rgba(142,68,173,0.06);
-                }
-                .ar-hearts {
-                    font-size: 1.2rem; letter-spacing: 4px;
-                }
-                .ar-restart-btn {
-                    display: inline-flex; align-items: center; gap: 0.4rem;
-                    background: rgba(142,68,173,0.06);
-                    border: 1px solid rgba(142,68,173,0.18);
-                    color: var(--accent-primary);
-                    padding: 0.5rem 1rem;
-                    border-radius: 999px;
-                    font-weight: 700; font-size: 0.85rem;
-                    font-family: var(--font-ui);
-                    cursor: pointer;
-                    transition: all 0.2s;
-                }
-                .ar-restart-btn:hover {
-                    background: rgba(142,68,173,0.12);
-                    transform: translateY(-1px);
-                }
-
-                .ar-board-wrap {
-                    background: rgba(255,255,255,0.9);
-                    border: 1px solid rgba(142,68,173,0.14);
-                    border-radius: 20px;
-                    padding: 1rem;
-                    box-shadow: 0 20px 60px rgba(142,68,173,0.12), 0 4px 16px rgba(0,0,0,0.06);
-                    backdrop-filter: blur(12px);
-                }
-                .ar-game-canvas {
-                    width: 100%; height: auto;
-                    border-radius: 12px;
-                    cursor: pointer;
-                    display: block;
-                }
-
-                /* Modal */
-                .ar-modal-overlay {
-                    position: fixed; inset: 0;
-                    background: rgba(0,0,0,0.5);
-                    backdrop-filter: blur(8px);
-                    display: flex; align-items: center; justify-content: center;
-                    z-index: 1000;
-                    padding: 1rem;
-                }
-                .ar-modal {
-                    background: white;
-                    border: 1px solid rgba(142,68,173,0.18);
-                    border-radius: 20px;
-                    padding: 2.5rem 2rem;
-                    max-width: 420px; width: 100%;
-                    text-align: center;
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-                }
-                .ar-modal-title {
-                    font-family: var(--font-ui);
-                    font-size: 1.6rem; font-weight: 900;
-                    color: var(--text-primary);
-                    margin: 0 0 1rem;
-                }
-                .ar-modal-fee, .ar-modal-balance {
-                    color: var(--text-secondary);
-                    margin: 0.4rem 0;
-                    font-size: 1rem;
-                }
+                .ar-title-purple { background: linear-gradient(135deg, #8e44ad, #732d91); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+                .ar-title-green { background: linear-gradient(135deg, #22c55e, #16a34a); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+                .ar-subtitle { color: var(--text-secondary); font-size: 1rem; line-height: 1.6; max-width: 480px; margin: 0 auto; }
+                .ar-status-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; background: rgba(255,255,255,0.85); border: 1px solid rgba(142,68,173,0.14); border-radius: 14px; padding: 0.75rem 1.2rem; backdrop-filter: blur(8px); box-shadow: 0 4px 14px rgba(142,68,173,0.06); }
+                .ar-hearts { font-size: 1.2rem; letter-spacing: 4px; }
+                .ar-restart-btn { display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(142,68,173,0.06); border: 1px solid rgba(142,68,173,0.18); color: var(--accent-primary); padding: 0.5rem 1rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem; font-family: var(--font-ui); cursor: pointer; transition: all 0.2s; }
+                .ar-restart-btn:hover { background: rgba(142,68,173,0.12); transform: translateY(-1px); }
+                .ar-board-wrap { background: rgba(255,255,255,0.9); border: 1px solid rgba(142,68,173,0.14); border-radius: 20px; padding: 1rem; box-shadow: 0 20px 60px rgba(142,68,173,0.12), 0 4px 16px rgba(0,0,0,0.06); backdrop-filter: blur(12px); }
+                .ar-game-canvas { width: 100%; height: auto; border-radius: 12px; cursor: pointer; display: block; }
+                .ar-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+                .ar-modal { background: white; border: 1px solid rgba(142,68,173,0.18); border-radius: 20px; padding: 2.5rem 2rem; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+                .ar-modal-title { font-family: var(--font-ui); font-size: 1.6rem; font-weight: 900; color: var(--text-primary); margin: 0 0 1rem; }
+                .ar-modal-fee, .ar-modal-balance { color: var(--text-secondary); margin: 0.4rem 0; font-size: 1rem; }
                 .ar-coin-val { color: #FFB400; font-weight: 800; }
-                .ar-modal-actions {
-                    display: flex; gap: 0.75rem; justify-content: center;
-                    margin-top: 1.5rem; flex-wrap: wrap;
-                }
-                .ar-btn-primary {
-                    display: inline-flex; align-items: center; gap: 0.5rem;
-                    background: linear-gradient(135deg, #8e44ad, #732d91);
-                    color: white; border: none;
-                    padding: 0.85rem 1.6rem;
-                    border-radius: 999px;
-                    font-weight: 700; font-family: var(--font-ui);
-                    font-size: 0.95rem;
-                    cursor: pointer; transition: all 0.3s;
-                    box-shadow: 0 6px 20px rgba(142,68,173,0.28);
-                }
-                .ar-btn-primary:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 10px 28px rgba(142,68,173,0.38);
-                }
-                .ar-btn-outline {
-                    display: inline-flex; align-items: center;
-                    padding: 0.85rem 1.6rem;
-                    border-radius: 999px;
-                    border: 1.5px solid rgba(142,68,173,0.3);
-                    color: var(--accent-primary);
-                    background: rgba(142,68,173,0.04);
-                    font-weight: 700; font-family: var(--font-ui);
-                    font-size: 0.95rem;
-                    text-decoration: none;
-                    transition: all 0.3s;
-                }
-                .ar-btn-outline:hover {
-                    background: rgba(142,68,173,0.10);
-                    transform: translateY(-2px);
-                }
-
-                @media (max-width: 640px) {
-                    .ar-inner { padding: 2rem 1.25rem 3rem; }
-                }
+                .ar-modal-actions { display: flex; gap: 0.75rem; justify-content: center; margin-top: 1.5rem; flex-wrap: wrap; }
+                .ar-btn-primary { display: inline-flex; align-items: center; gap: 0.5rem; background: linear-gradient(135deg, #8e44ad, #732d91); color: white; border: none; padding: 0.85rem 1.6rem; border-radius: 999px; font-weight: 700; font-family: var(--font-ui); font-size: 0.95rem; cursor: pointer; transition: all 0.3s; box-shadow: 0 6px 20px rgba(142,68,173,0.28); }
+                .ar-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(142,68,173,0.38); }
+                .ar-btn-outline { display: inline-flex; align-items: center; padding: 0.85rem 1.6rem; border-radius: 999px; border: 1.5px solid rgba(142,68,173,0.3); color: var(--accent-primary); background: rgba(142,68,173,0.04); font-weight: 700; font-family: var(--font-ui); font-size: 0.95rem; text-decoration: none; transition: all 0.3s; }
+                .ar-btn-outline:hover { background: rgba(142,68,173,0.10); transform: translateY(-2px); }
+                @media (max-width: 640px) { .ar-inner { padding: 2rem 1.25rem 3rem; } }
             `}</style>
         </Layout>
     );

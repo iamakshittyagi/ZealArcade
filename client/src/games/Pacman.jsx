@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw, Play } from 'lucide-react';
 
 const Pacman = () => {
-    const { updateBalance } = useGame();
+    const { updateBalance, refreshBalance } = useGame();
     const canvasRef = useRef(null);
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
+
     const [gameState, setGameState] = useState('START');
     const [score, setScore] = useState(0);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const [highScore, setHighScore] = useState(parseInt(localStorage.getItem('pacmanHighScore')) || 0);
     const animationIdRef = useRef(null);
 
@@ -52,6 +56,51 @@ const Pacman = () => {
         pelletsRef.current = p;
     };
 
+    // Start backend session
+    const beginBackendSession = async () => {
+        try {
+            const { session } = await startSession('pacman');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
+    };
+
+    // End backend session with A1 reward
+    const finishBackendSession = async (finalScore) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const allPelletsEaten = pelletsRef.current.length === 0;
+            const result = allPelletsEaten ? 'win' : (finalScore > 0 ? 'win' : 'loss');
+
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: finalScore,
+                finalState: {
+                    pelletsRemaining: pelletsRef.current.length,
+                    clearedBoard: allPelletsEaten
+                }
+            });
+
+            // Skill bonus: 1 coin per 50 points scored, capped at +25
+            const skillBonus = result === 'win' ? Math.min(25, Math.floor(finalScore / 50)) : 0;
+            if (skillBonus > 0) {
+                await updateBalance(skillBonus);
+            } else {
+                await refreshBalance();
+            }
+            setCoinsEarned((res.coinChange || 0) + skillBonus);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
+
     const resetGame = () => {
         pacmanRef.current = { x: 9, y: 15, dir: { x: 0, y: 0 }, nextDir: { x: 0, y: 0 }, mouth: 0, mouthSpeed: 0.1 };
         ghostsRef.current = [
@@ -62,6 +111,7 @@ const Pacman = () => {
         ];
         initPellets();
         setScore(0);
+        setCoinsEarned(0);
         setGameState('START');
     };
 
@@ -74,7 +124,7 @@ const Pacman = () => {
             setHighScore(currentScore);
             localStorage.setItem('pacmanHighScore', currentScore);
         }
-        updateBalance(currentScore);
+        finishBackendSession(currentScore);
     };
 
     const update = () => {
@@ -98,7 +148,7 @@ const Pacman = () => {
             if (pelletIndex !== -1) {
                 pelletsRef.current.splice(pelletIndex, 1);
                 setScore(s => s + 10);
-                if (pelletsRef.current.length === 0) setGameState('GAME_OVER');
+                if (pelletsRef.current.length === 0) triggerGameOver(score + 10);
             }
         }
 
@@ -242,7 +292,10 @@ const Pacman = () => {
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-            if (gameState === 'START' && (e.code === 'Space' || e.code.startsWith('Arrow'))) setGameState('PLAYING');
+            if (gameState === 'START' && (e.code === 'Space' || e.code.startsWith('Arrow'))) {
+                setGameState('PLAYING');
+                beginBackendSession();
+            }
             switch (e.code) {
                 case 'ArrowUp': pacmanRef.current.nextDir = { x: 0, y: -1 }; break;
                 case 'ArrowDown': pacmanRef.current.nextDir = { x: 0, y: 1 }; break;
@@ -299,7 +352,7 @@ const Pacman = () => {
                                 <div className="ar-modal-overlay-inline">
                                     <h2 className="ar-modal-title">Ready?</h2>
                                     <div className="ar-modal-actions">
-                                        <button onClick={() => setGameState('PLAYING')} className="ar-btn-primary">
+                                        <button onClick={() => { setGameState('PLAYING'); beginBackendSession(); }} className="ar-btn-primary">
                                             <Play size={16} /> Start Game
                                         </button>
                                     </div>
@@ -308,7 +361,7 @@ const Pacman = () => {
                             {gameState === 'GAME_OVER' && (
                                 <div className="ar-modal-overlay-inline">
                                     <h2 className="ar-modal-title">💔 Game Over</h2>
-                                    <p className="ar-modal-fee">Earned: <span className="ar-coin-val">+{score} Z Coins</span></p>
+                                    <p className="ar-modal-fee">Earned: <span className="ar-coin-val">+{coinsEarned} Z Coins</span></p>
                                     <div className="ar-modal-actions">
                                         <button onClick={resetGame} className="ar-btn-primary">
                                             <RotateCcw size={16} /> Play Again

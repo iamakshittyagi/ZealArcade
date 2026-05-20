@@ -1,17 +1,60 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw } from 'lucide-react';
 
 const HandSlap = () => {
-    const { updateBalance } = useGame();
+    const { updateBalance, refreshBalance } = useGame();
     const [gameState, setGameState] = useState('IDLE');
     const [score, setScore] = useState(0);
     const [aiScore, setAiScore] = useState(0);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const [isSearching, setIsSearching] = useState(true);
     const [handPos, setHandPos] = useState({ user: 'base', ai: 'base' });
     const [status, setStatus] = useState("Wait for the right moment...");
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
+
+    // Start backend session
+    const beginBackendSession = async () => {
+        try {
+            const { session } = await startSession('hand-slap');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
+    };
+
+    // End backend session with A1 reward (skill bonus per slap)
+    const finishBackendSession = async (playerScore, opponentScore) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const result = playerScore > opponentScore ? 'win' : 'loss';
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: playerScore,
+                finalState: { playerSlaps: playerScore, aiSlaps: opponentScore }
+            });
+
+            // Skill bonus: 2 coins per slap landed, capped at +20
+            const skillBonus = result === 'win' ? Math.min(20, playerScore * 2) : 0;
+            if (skillBonus > 0) {
+                await updateBalance(skillBonus);
+            } else {
+                await refreshBalance();
+            }
+            setCoinsEarned((res.coinChange || 0) + skillBonus);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
 
     useEffect(() => {
         const canvas = bgCanvasRef.current;
@@ -67,6 +110,7 @@ const HandSlap = () => {
         const timer = setTimeout(() => {
             setIsSearching(false);
             setGameState('ATTACKING');
+            beginBackendSession();
         }, 2000);
         return () => clearTimeout(timer);
     }, []);
@@ -74,6 +118,7 @@ const HandSlap = () => {
     const resetGame = () => {
         setScore(0);
         setAiScore(0);
+        setCoinsEarned(0);
         setGameState('IDLE');
         setStatus("Wait for the right moment...");
         setHandPos({ user: 'base', ai: 'base' });
@@ -81,6 +126,7 @@ const HandSlap = () => {
         setTimeout(() => {
             setIsSearching(false);
             setGameState('ATTACKING');
+            beginBackendSession();
         }, 2000);
     };
 
@@ -114,18 +160,19 @@ const HandSlap = () => {
                     setStatus("Great dodge! You are now attacking.");
                     setGameState('ATTACKING');
                 } else {
-                    setAiScore(s => s + 1);
+                    const newAiScore = aiScore + 1;
+                    setAiScore(newAiScore);
                     setStatus("Ouch! Opponent slapped you.");
-                    if (aiScore + 1 >= 5) {
+                    if (newAiScore >= 5) {
                         setGameState('GAME_OVER');
-                        updateBalance(score * 10);
+                        finishBackendSession(score, newAiScore);
                     }
                 }
                 setTimeout(() => setHandPos({ user: 'base', ai: 'base' }), 300);
             }, Math.random() * 2000 + 1000);
             return () => clearTimeout(timer);
         }
-    }, [gameState, handPos.user, score, aiScore, updateBalance]);
+    }, [gameState, handPos.user, score, aiScore]);
 
     return (
         <Layout>
@@ -144,13 +191,11 @@ const HandSlap = () => {
                     </div>
 
                     <div className="hs-status-row">
-                        <div className="hs-status">
-                            {status}
-                        </div>
+                        <div className="hs-status">{status}</div>
                         <div className="hs-score-chip">
-                            <span style={{color: '#3b82f6'}}>You: {score}</span>
-                            <span style={{color: '#444'}}>|</span>
-                            <span style={{color: '#ef4444'}}>AI: {aiScore}</span>
+                            <span style={{ color: '#3b82f6' }}>You: {score}</span>
+                            <span style={{ color: '#444' }}>|</span>
+                            <span style={{ color: '#ef4444' }}>AI: {aiScore}</span>
                         </div>
                         <button className="hs-restart-btn" onClick={resetGame}>
                             <RotateCcw size={15} /> Restart
@@ -183,8 +228,9 @@ const HandSlap = () => {
                                 onMouseDown={handleAction}
                                 onTouchStart={handleAction}
                                 className={`hs-action-btn ${gameState === 'ATTACKING' ? 'hs-btn-attack' : 'hs-btn-dodge'}`}
+                                disabled={gameState === 'GAME_OVER' || isSearching}
                             >
-                                {gameState === 'ATTACKING' ? 'SLAP!' : 'DODGE!'}
+                                {gameState === 'ATTACKING' ? 'SLAP!' : gameState === 'DEFENDING' ? 'DODGE!' : 'WAIT...'}
                             </button>
                         </div>
                     </div>
@@ -193,9 +239,9 @@ const HandSlap = () => {
                 {gameState === 'GAME_OVER' && (
                     <div className="hs-modal-overlay">
                         <div className="hs-modal-content">
-                            <h2>Game Over</h2>
-                            <p>You scored {score} slaps!</p>
-                            <p className="hs-coin-reward">+{score * 10} Z Coins</p>
+                            <h2>{score > aiScore ? '🎉 You Win!' : '💔 You Lose'}</h2>
+                            <p>You scored {score} slaps. AI scored {aiScore}.</p>
+                            <p className="hs-coin-reward">+{coinsEarned} Z Coins</p>
                             <button onClick={resetGame} className="hs-btn-attack" style={{ marginTop: '1.5rem', padding: '1rem 3rem' }}>
                                 Play Again
                             </button>
@@ -262,6 +308,7 @@ const styles = `
         backdrop-filter: blur(8px);
         box-shadow: 0 4px 14px rgba(142,68,173,0.06);
         gap: 1rem;
+        flex-wrap: wrap;
     }
     .hs-status {
         font-family: var(--font-ui);
@@ -276,7 +323,7 @@ const styles = `
         background: rgba(0,0,0,0.03);
         padding: 0.3rem 0.8rem; border-radius: 20px;
     }
-    
+
     .hs-restart-btn {
         display: inline-flex; align-items: center; gap: 0.4rem;
         background: rgba(142,68,173,0.06);
@@ -310,7 +357,7 @@ const styles = `
         box-shadow: inset 0 10px 30px rgba(0,0,0,0.05);
         overflow: hidden;
     }
-    
+
     .hs-hand {
         position: absolute; left: 50%;
         font-size: 7rem;
@@ -349,6 +396,7 @@ const styles = `
         user-select: none;
     }
     .hs-action-btn:active { transform: translateY(4px); box-shadow: 0 5px 10px rgba(0,0,0,0.2); }
+    .hs-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .hs-btn-attack { background: linear-gradient(135deg, #ff4b2b, #ff416c); }
     .hs-btn-dodge { background: linear-gradient(135deg, #3b82f6, #1e3a8a); }
 
@@ -366,7 +414,7 @@ const styles = `
     .hs-modal-content h2 { font-size: 2.5rem; margin: 0 0 1rem; color: var(--text-primary); }
     .hs-modal-content p { font-size: 1.2rem; color: var(--text-secondary); margin: 0.5rem 0; }
     .hs-coin-reward { font-size: 1.5rem !important; color: #FFD700 !important; font-weight: 800; }
-    
+
     @media (max-width: 640px) {
         .hs-inner { padding: 2rem 1.25rem 3rem; }
         .hs-status-row { flex-wrap: wrap; }

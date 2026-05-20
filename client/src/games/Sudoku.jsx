@@ -1,24 +1,80 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { ChevronLeft, ChevronRight, RotateCcw, Trash2, ArrowRight } from 'lucide-react';
 
 const Sudoku = () => {
-    const { balance, updateBalance } = useGame();
+    const { balance, updateBalance, refreshBalance } = useGame();
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
+    const startTimeRef = useRef(null);
+
     const [level, setLevel] = useState(parseInt(localStorage.getItem('sudokuLevel')) || 1);
     const [puzzle, setPuzzle] = useState([]);
     const [solution, setSolution] = useState([]);
     const [userGrid, setUserGrid] = useState([]);
     const [isWin, setIsWin] = useState(false);
     const [showPayment, setShowPayment] = useState(false);
+    const [coinsEarned, setCoinsEarned] = useState(0);
 
     const getCost = (lvl) => lvl === 1 ? 0 : Math.floor(lvl / 2) * 10;
+
+    // Start backend session
+    const beginBackendSession = async () => {
+        try {
+            const { session } = await startSession('sudoku');
+            sessionIdRef.current = session._id;
+            startTimeRef.current = Date.now();
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
+    };
+
+    // End backend session with A1 reward (Sudoku: time bonus instead of score)
+    const finishBackendSession = async (currentLevel) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const minutesTaken = startTimeRef.current
+                ? (Date.now() - startTimeRef.current) / 60000
+                : 99;
+
+            const res = await endSession(sessionIdRef.current, {
+                result: 'win',
+                score: currentLevel,
+                finalState: {
+                    level: currentLevel,
+                    minutesTaken: Math.round(minutesTaken * 10) / 10
+                }
+            });
+
+            // Skill bonus: faster = more coins. +20 if under 1 min, scales down
+            const timeBonus = Math.max(0, Math.min(20, Math.round(20 - minutesTaken * 2)));
+            // Level bonus: +1 per level above 1, capped at +15
+            const levelBonus = Math.min(15, Math.max(0, currentLevel - 1));
+            const totalBonus = timeBonus + levelBonus;
+
+            if (totalBonus > 0) {
+                await updateBalance(totalBonus);
+            } else {
+                await refreshBalance();
+            }
+            setCoinsEarned((res.coinChange || 0) + totalBonus);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
 
     const generatePuzzle = useCallback((lvl) => {
         let board = Array.from({ length: 9 }, () => Array(9).fill(0));
         for (let i = 0; i < 9; i += 3) {
-            const nums = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
+            const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9].sort(() => Math.random() - 0.5);
             let idx = 0;
             for (let r = 0; r < 3; r++)
                 for (let c = 0; c < 3; c++)
@@ -59,6 +115,8 @@ const Sudoku = () => {
         setPuzzle(pBoard.map(row => [...row]));
         setUserGrid(pBoard.map(row => [...row]));
         setIsWin(false);
+        setCoinsEarned(0);
+        beginBackendSession();
     }, []);
 
     useEffect(() => {
@@ -82,7 +140,10 @@ const Sudoku = () => {
         for (let i = 0; i < 9 && complete; i++)
             for (let j = 0; j < 9 && complete; j++)
                 if (newGrid[i][j] !== solution[i][j]) complete = false;
-        if (complete) { setIsWin(true); updateBalance(getCost(level) + 20); }
+        if (complete) {
+            setIsWin(true);
+            finishBackendSession(level);
+        }
     };
 
     const handlePay = () => {
@@ -221,7 +282,7 @@ const Sudoku = () => {
                         <div className="ar-modal-overlay">
                             <div className="ar-modal">
                                 <h2 className="ar-modal-title-dark">🎉 Puzzle Solved!</h2>
-                                <p className="ar-modal-fee">You earned <span className="ar-coin-val">+{getCost(level) + 20} Z Coins</span>!</p>
+                                <p className="ar-modal-fee">You earned <span className="ar-coin-val">+{coinsEarned} Z Coins</span>!</p>
                                 <div className="ar-modal-actions">
                                     <button className="ar-btn-primary" onClick={nextLevel}>
                                         Next Level <ArrowRight size={16} />
