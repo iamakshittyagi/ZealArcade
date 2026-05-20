@@ -9,6 +9,7 @@ import Signup from './pages/Signup';
 import Arcade from './pages/Arcade';
 import Rewards from './pages/Rewards';
 import Leaderboard from './pages/Leaderboard';
+import Admin from './pages/Admin';
 
 
 // Games
@@ -54,6 +55,9 @@ function App() {
                     } />
                     <Route path="/leaderboard" element={
                         <ProtectedRoute><Leaderboard /></ProtectedRoute>
+                    } />
+                    <Route path="/admin" element={
+                        <ProtectedRoute><Admin /></ProtectedRoute>
                     } />
 
                     {/* Games (all protected) */}

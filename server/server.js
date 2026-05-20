@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import helmet from 'helmet';
 import connectDB from './config/db.js';
 import authRoutes from './routes/auth.js';
+import leaderboardRoutes from './routes/leaderboard.js'; // 👈 added
+import adminRoutes from './routes/admin.js';
 
 dotenv.config();
 connectDB();
@@ -18,6 +20,8 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api', gameRoutes);
+app.use('/api/leaderboard', leaderboardRoutes); // 👈 added
+app.use('/api/admin', adminRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Zeal Arcade API is running', status: 'healthy' });

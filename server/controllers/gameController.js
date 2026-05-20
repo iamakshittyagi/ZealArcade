@@ -98,16 +98,84 @@ export const myScores = async (req, res) => {
 };
 
 // GET /api/leaderboard?gameId=xxx — top players for a game (or overall)
+// GET /api/leaderboard?gameId=xxx&sortBy=xxx&limit=20
 export const leaderboard = async (req, res) => {
   try {
-    const { gameId, limit = 20 } = req.query;
-    const filter = gameId ? { gameId } : {};
-    const scores = await Score.find(filter)
-      .sort({ totalScore: -1, wins: -1 })
-      .limit(parseInt(limit))
-      .populate('user', 'username');
-    res.json({ leaderboard: scores });
+    const { gameId, limit = 20, sortBy = 'wins' } = req.query;
+    const limitNum = Math.min(parseInt(limit) || 20, 100);
+
+    // PER-GAME leaderboard (with $lookup join to Users)
+    if (gameId) {
+      const sortField = ['wins', 'highScore', 'totalScore', 'totalGames'].includes(sortBy) ? sortBy : 'wins';
+
+      const pipeline = [
+        { $match: { gameId } },
+        { $lookup: {
+            from: 'users',
+            localField: 'user',
+            foreignField: '_id',
+            as: 'userInfo'
+        }},
+        { $unwind: '$userInfo' },
+        { $project: {
+            user: 1,
+            gameId: 1,
+            wins: 1,
+            losses: 1,
+            draws: 1,
+            totalGames: 1,
+            highScore: 1,
+            totalScore: 1,
+            lastPlayed: 1,
+            username: '$userInfo.username',
+            coins: '$userInfo.coins'
+        }},
+        { $sort: { [sortField]: -1, wins: -1, totalGames: -1 } },
+        { $limit: limitNum }
+      ];
+
+      const leaderboard = await Score.aggregate(pipeline);
+      return res.json({ leaderboard, type: 'per-game', gameId, sortBy: sortField });
+    }
+
+    // GLOBAL leaderboard — aggregate across all games per user
+    const pipeline = [
+      { $group: {
+          _id: '$user',
+          totalWins: { $sum: '$wins' },
+          totalGamesPlayed: { $sum: '$totalGames' },
+          totalScore: { $sum: '$totalScore' }
+      }},
+      { $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'userInfo'
+      }},
+      { $unwind: '$userInfo' },
+      { $project: {
+          user: '$_id',
+          username: '$userInfo.username',
+          coins: '$userInfo.coins',
+          totalWins: 1,
+          totalGamesPlayed: 1,
+          totalScore: 1,
+          winRate: {
+            $cond: [
+              { $gt: ['$totalGamesPlayed', 0] },
+              { $multiply: [{ $divide: ['$totalWins', '$totalGamesPlayed'] }, 100] },
+              0
+            ]
+          }
+      }},
+      { $sort: { coins: -1, totalWins: -1, totalGamesPlayed: -1 } },
+      { $limit: limitNum }
+    ];
+
+    const leaderboard = await Score.aggregate(pipeline);
+    res.json({ leaderboard, type: 'global' });
   } catch (err) {
+    console.error('Leaderboard error:', err);
     res.status(500).json({ error: err.message });
   }
 };

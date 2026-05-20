@@ -55,23 +55,32 @@ export const GameProvider = ({ children }) => {
     setBalance(0);
   };
 
-  // UPDATE BALANCE — now hits backend, updates DB
+  // SEND a delta to backend (used for entry fees, refer-a-friend, dev cheat)
   const updateBalance = async (delta) => {
-    // Optimistic UI update
-    setBalance(prev => prev + delta);
+    setBalance(prev => prev + delta);  // optimistic UI update
     try {
       const res = await api.post('/auth/coins', { delta });
-      setBalance(res.data.coins);
+      setBalance(res.data.coins);  // sync with server
     } catch (err) {
-      // If it fails, roll back
-      setBalance(prev => prev - delta);
+      setBalance(prev => prev - delta);  // roll back on failure
       console.error('Failed to update coins:', err);
+    }
+  };
+
+  // SYNC balance from server (used after game-end when backend already updated coins)
+  const refreshBalance = async () => {
+    try {
+      const { user } = await fetchMe();
+      setBalance(user.coins ?? 0);
+      setUser(user);
+    } catch (err) {
+      console.error('Failed to refresh balance:', err);
     }
   };
 
   return (
     <GameContext.Provider
-      value={{ user, balance, loading, login, register, logout, updateBalance }}
+      value={{ user, balance, loading, login, register, logout, updateBalance, refreshBalance }}
     >
       {children}
     </GameContext.Provider>

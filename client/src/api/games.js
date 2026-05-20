@@ -25,10 +25,11 @@ export const myScores = async () => {
 };
 
 // GET /api/leaderboard?gameId=xxx — top players
-export const fetchLeaderboard = async (gameId, limit = 20) => {
+export const fetchLeaderboard = async (gameId, limit = 20, sortBy = 'wins') => {
   const params = {};
   if (gameId) params.gameId = gameId;
   if (limit) params.limit = limit;
+  if (sortBy) params.sortBy = sortBy;
   const res = await api.get('/leaderboard', { params });
-  return res.data;  // { leaderboard: [...] }
+  return res.data;  // { leaderboard, type, gameId, sortBy }
 };

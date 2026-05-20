@@ -27,11 +27,16 @@ const userSchema = new mongoose.Schema({
     enum: ['player', 'admin'],
     default: 'player'
   },
- totalGamesPlayed: { type: Number, default: 0 },
+  status: {                                              // 👈 added
+    type: String,
+    enum: ['active', 'banned', 'deleted'],
+    default: 'active'
+  },
+  totalGamesPlayed: { type: Number, default: 0 },
   coins: { type: Number, default: 100 },
   lastLogin: Date
 }, {
-  timestamps: true   // adds createdAt and updatedAt automatically
+  timestamps: true
 });
 
 // Method to hash and set the password

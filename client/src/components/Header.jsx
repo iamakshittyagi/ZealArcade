@@ -1,38 +1,37 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGame } from '../context/GameContext';
-import { LogOut, Coins, Gift, Sparkles, Zap, LogIn, UserPlus, Trophy } from 'lucide-react';
+import { LogOut, Coins, Gift, Sparkles, Zap, LogIn, UserPlus, Trophy, Shield } from 'lucide-react'; // 👈 Shield added
 
 const Header = () => {
     const { user, balance, logout, updateBalance } = useGame();
     const navigate = useNavigate();
 
-   const handleLogout = () => {
-    logout();
-    setTimeout(() => navigate('/'), 0);
-};
+    const handleLogout = () => {
+        logout();
+        setTimeout(() => navigate('/'), 0);
+    };
 
-   const handleRefer = () => {
-    const link = `https://zealarcade.com/signup?ref=${user.username}`;
-    alert(`Referral link generated!\n\n${link}\n\nShare this with a friend! We've added 500 Z Coins to your account as an instant bonus!`);
-    updateBalance(500);
-    localStorage.setItem(`lastRefer_${user.username}`, Date.now().toString());
-};
+    const handleRefer = () => {
+        const link = `https://zealarcade.com/signup?ref=${user.username}`;
+        alert(`Referral link generated!\n\n${link}\n\nShare this with a friend! We've added 500 Z Coins to your account as an instant bonus!`);
+        updateBalance(500);
+        localStorage.setItem(`lastRefer_${user.username}`, Date.now().toString());
+    };
 
-    // ⚠️ DEV CHEAT — gated to 5-hour cooldown
-const handleDevCheat = () => {
-    const lastCheat = user ? localStorage.getItem(`lastCheat_${user.username}`) : null;
-    const COOLDOWN_MS = 5 * 60 * 60 * 1000;  // 5 hours
+    const handleDevCheat = () => {
+        const lastCheat = user ? localStorage.getItem(`lastCheat_${user.username}`) : null;
+        const COOLDOWN_MS = 5 * 60 * 60 * 1000;
 
-    if (lastCheat && (Date.now() - parseInt(lastCheat)) < COOLDOWN_MS) {
-        const hoursLeft = Math.ceil((COOLDOWN_MS - (Date.now() - parseInt(lastCheat))) / (60 * 60 * 1000));
-        alert(`Cooldown active. Try again in ~${hoursLeft} hour(s).`);
-        return;
-    }
+        if (lastCheat && (Date.now() - parseInt(lastCheat)) < COOLDOWN_MS) {
+            const hoursLeft = Math.ceil((COOLDOWN_MS - (Date.now() - parseInt(lastCheat))) / (60 * 60 * 1000));
+            alert(`Cooldown active. Try again in ~${hoursLeft} hour(s).`);
+            return;
+        }
 
-    updateBalance(1000);
-    localStorage.setItem(`lastCheat_${user.username}`, Date.now().toString());
-};
+        updateBalance(1000);
+        localStorage.setItem(`lastCheat_${user.username}`, Date.now().toString());
+    };
 
     const lastRefer = user ? localStorage.getItem(`lastRefer_${user.username}`) : null;
     const canRefer = !lastRefer || (Date.now() - parseInt(lastRefer)) > 24 * 60 * 60 * 1000;
@@ -50,16 +49,23 @@ const handleDevCheat = () => {
                 <div className="header-actions">
                     {user ? (
                         <>
-                           <span className="welcome-text">Welcome, <strong>{user.username}</strong></span>
+                            <span className="welcome-text">Welcome, <strong>{user.username}</strong></span>
 
                             <button onClick={handleDevCheat} className="header-btn dev-btn" title="Add 1000 coins (5h cooldown)">
-    <Zap size={16} /> +1000
-</button>
+                                <Zap size={16} /> +1000
+                            </button>
 
                             {canRefer && (
                                 <button onClick={handleRefer} className="header-btn refer-btn">
                                     <Gift size={16} /> Refer
                                 </button>
+                            )}
+
+                            {/* 👇 Admin link — only visible to admins */}
+                            {user?.role === 'admin' && (
+                                <Link to="/admin" className="header-btn admin-btn" title="Admin Panel">
+                                    <Shield size={16} /> Admin
+                                </Link>
                             )}
 
                             <Link to="/leaderboard" className="header-btn leaderboard-btn">
@@ -212,6 +218,12 @@ const handleDevCheat = () => {
                 .balance-label {
                     font-size: 0.8rem;
                     color: var(--text-secondary);
+                }
+                /* 👇 Admin button style */
+                .admin-btn {
+                    background: linear-gradient(135deg, #8e44ad, #732d91);
+                    color: white;
+                    box-shadow: 0 4px 14px rgba(142,68,173,0.28);
                 }
                 @media (max-width: 768px) {
                     .welcome-text { display: none; }
