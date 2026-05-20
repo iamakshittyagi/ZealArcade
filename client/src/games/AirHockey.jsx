@@ -1,17 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw } from 'lucide-react';
 
+const WIN_SCORE = 7;
+
 const AirHockey = () => {
-    const { updateBalance } = useGame();
+    const { refreshBalance } = useGame();
     const canvasRef = useRef(null);
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
+
     const [score, setScore] = useState(0);
     const [aiScore, setAiScore] = useState(0);
     const [isSearching, setIsSearching] = useState(true);
+    const [gameOver, setGameOver] = useState(false);
+    const [winner, setWinner] = useState(null);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const animationIdRef = useRef(null);
 
+    // Refs to read scores inside game loop
+    const scoreRef = useRef(0);
+    const aiScoreRef = useRef(0);
+    const gameOverRef = useRef(false);
+    useEffect(() => { scoreRef.current = score; }, [score]);
+    useEffect(() => { aiScoreRef.current = aiScore; }, [aiScore]);
+    useEffect(() => { gameOverRef.current = gameOver; }, [gameOver]);
+
+    // Background canvas
     useEffect(() => {
         const canvas = bgCanvasRef.current;
         if (!canvas) return;
@@ -66,13 +83,53 @@ const AirHockey = () => {
     const player = useRef({ x: 250, y: 700, radius: 30 });
     const ai = useRef({ x: 250, y: 100, radius: 30 });
 
+    // Backend session start
+    const beginBackendSession = async () => {
+        try {
+            const { session } = await startSession('air-hockey');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
+    };
+
+    // Backend session end
+    const finishBackendSession = async (didWin, finalPlayerScore, finalAiScore) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const result = didWin ? 'win' : 'loss';
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: finalPlayerScore,
+                finalState: { playerScore: finalPlayerScore, aiScore: finalAiScore }
+            });
+            await refreshBalance();
+            setCoinsEarned(res.coinChange || 0);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
+
     useEffect(() => {
+        beginBackendSession();
         const timer = setTimeout(() => setIsSearching(false), 2000);
         return () => clearTimeout(timer);
     }, []);
 
+    const endMatch = (playerWon, finalP, finalA) => {
+        setGameOver(true);
+        setWinner(playerWon ? 'player' : 'ai');
+        finishBackendSession(playerWon, finalP, finalA);
+    };
+
     const update = () => {
-        if (isSearching) return;
+        if (isSearching || gameOverRef.current) return;
         const p = puck.current;
         const u = player.current;
         const a = ai.current;
@@ -107,19 +164,30 @@ const AirHockey = () => {
         checkCollision(u);
         checkCollision(a);
 
+        // Top goal — player scores
         if (p.y < 0) {
             if (p.x > 150 && p.x < 350) {
-                setScore(s => s + 1);
-                updateBalance(50);
+                const newScore = scoreRef.current + 1;
+                setScore(newScore);
+                if (newScore >= WIN_SCORE) {
+                    endMatch(true, newScore, aiScoreRef.current);
+                    return;
+                }
                 resetPuck();
             } else {
                 p.dy *= -1;
                 p.y = p.radius;
             }
         }
+        // Bottom goal — AI scores
         if (p.y > 800) {
             if (p.x > 150 && p.x < 350) {
-                setAiScore(s => s + 1);
+                const newAiScore = aiScoreRef.current + 1;
+                setAiScore(newAiScore);
+                if (newAiScore >= WIN_SCORE) {
+                    endMatch(false, scoreRef.current, newAiScore);
+                    return;
+                }
                 resetPuck();
             } else {
                 p.dy *= -1;
@@ -204,13 +272,17 @@ const AirHockey = () => {
         player.current.y = Math.max(400 + player.current.radius, Math.min(800 - player.current.radius, y));
     };
 
-    const resetGame = () => {
+    const resetGame = async () => {
         setScore(0);
         setAiScore(0);
+        setGameOver(false);
+        setWinner(null);
+        setCoinsEarned(0);
         setIsSearching(true);
         player.current = { x: 250, y: 700, radius: 30 };
         ai.current = { x: 250, y: 100, radius: 30 };
         resetPuck();
+        await beginBackendSession();
         setTimeout(() => setIsSearching(false), 2000);
     };
 
@@ -232,7 +304,9 @@ const AirHockey = () => {
 
                     <div className="ah-status-row">
                         <div className="ah-status">
-                            {isSearching ? 'Finding Opponent...' : 'First to 7 wins!'}
+                            {isSearching ? 'Finding Opponent...' :
+                             gameOver ? (winner === 'player' ? '🎉 You Win!' : '💔 Computer Wins') :
+                             `First to ${WIN_SCORE} wins!`}
                         </div>
                         <div className="ah-score-chip">
                             <span style={{color: '#8e44ad'}}>You: {score}</span>
@@ -255,6 +329,19 @@ const AirHockey = () => {
                         />
                         <p className="ah-instructions">Drag to control your mallet</p>
                     </div>
+
+                    {gameOver && (
+                        <div className="ah-modal-overlay">
+                            <div className="ah-modal-content">
+                                <h2>{winner === 'player' ? '🎉 You Win!' : '💔 Computer Wins'}</h2>
+                                <p className="ah-final-score">{score} – {aiScore}</p>
+                                <p className="ah-coin-reward">+{coinsEarned} Z Coins</p>
+                                <button onClick={resetGame} className="ah-modal-btn">
+                                    Play Again
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <style>{styles}</style>
@@ -373,6 +460,29 @@ const styles = `
         font-weight: 500;
         text-align: center;
     }
+
+    .ah-modal-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 100; backdrop-filter: blur(8px);
+    }
+    .ah-modal-content {
+        background: white; padding: 3rem; border-radius: 24px;
+        text-align: center; font-family: var(--font-ui);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .ah-modal-content h2 { font-size: 2.2rem; margin: 0 0 1rem; color: var(--text-primary); }
+    .ah-final-score { font-size: 1.8rem; font-weight: 900; color: var(--accent-primary); margin: 0.5rem 0 1rem; }
+    .ah-coin-reward { font-size: 1.5rem !important; color: #FFD700 !important; font-weight: 800; margin-bottom: 2rem; }
+    .ah-modal-btn {
+        background: linear-gradient(135deg, #8e44ad, #ef4444);
+        color: white; border: none; padding: 1rem 3rem; border-radius: 99px;
+        font-size: 1.2rem; font-weight: 800; cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 10px 20px rgba(142,68,173,0.3);
+    }
+    .ah-modal-btn:hover { transform: translateY(-2px); box-shadow: 0 15px 25px rgba(142,68,173,0.4); }
 
     @media (max-width: 640px) {
         .ah-inner { padding: 2rem 1.25rem 3rem; }

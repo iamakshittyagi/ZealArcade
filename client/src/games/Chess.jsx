@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw } from 'lucide-react';
 
 const INITIAL_BOARD = [
@@ -20,19 +21,55 @@ const PIECE_ICONS = {
 };
 
 const Chess = () => {
-    const { updateBalance } = useGame();
+    const { refreshBalance } = useGame();
     const [board, setBoard] = useState(INITIAL_BOARD);
     const [selected, setSelected] = useState(null);
     const [turn, setTurn] = useState('white');
     const [status, setStatus] = useState("Your turn (White)");
     const [isGameOver, setIsGameOver] = useState(false);
+    const [winner, setWinner] = useState(null);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const [isSearching, setIsSearching] = useState(true);
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
 
+    // Start backend session on mount
     useEffect(() => {
+        const begin = async () => {
+            try {
+                const { session } = await startSession('chess');
+                sessionIdRef.current = session._id;
+            } catch (err) {
+                console.error('Could not start session:', err);
+                sessionIdRef.current = null;
+            }
+        };
+        begin();
         const timer = setTimeout(() => setIsSearching(false), 2000);
         return () => clearTimeout(timer);
     }, []);
+
+    // End backend session
+    const finishBackendSession = async (didWin) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const result = didWin ? 'win' : 'loss';
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: didWin ? 1 : 0,
+                finalState: { winnerColor: didWin ? 'white' : 'black' }
+            });
+            await refreshBalance();
+            setCoinsEarned(res.coinChange || 0);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
 
     useEffect(() => {
         const canvas = bgCanvasRef.current;
@@ -142,6 +179,17 @@ const Chess = () => {
         return false;
     };
 
+    // Check if a side still has its king
+    const hasKing = (boardState, color) => {
+        const kingChar = color === 'white' ? 'K' : 'k';
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                if (boardState[r][c] === kingChar) return true;
+            }
+        }
+        return false;
+    };
+
     const handleSquareClick = (r, c) => {
         if (isGameOver || turn === 'black' || isSearching) return;
         const piece = board[r][c];
@@ -153,10 +201,21 @@ const Chess = () => {
             }
             if (isValidMove(selected.r, selected.c, r, c, board)) {
                 const newBoard = board.map(row => [...row]);
+                const capturedPiece = newBoard[r][c];
                 newBoard[r][c] = board[selected.r][selected.c];
                 newBoard[selected.r][selected.c] = '';
                 setBoard(newBoard);
                 setSelected(null);
+
+                // Captured the black king?
+                if (capturedPiece === 'k') {
+                    setIsGameOver(true);
+                    setWinner('player');
+                    setStatus("🎉 Checkmate! You captured the king!");
+                    finishBackendSession(true);
+                    return;
+                }
+
                 setTurn('black');
                 setStatus("Opponent thinking...");
                 setTimeout(() => makeAIMove(newBoard), 1000);
@@ -168,8 +227,11 @@ const Chess = () => {
         }
     };
 
+    // AI: prefers captures (especially the king), otherwise random
     const makeAIMove = (currentBoard) => {
-        const legalMoves = [];
+        const captures = [];
+        const normalMoves = [];
+
         for (let fr = 0; fr < 8; fr++) {
             for (let fc = 0; fc < 8; fc++) {
                 const piece = currentBoard[fr][fc];
@@ -177,34 +239,65 @@ const Chess = () => {
                     for (let tr = 0; tr < 8; tr++) {
                         for (let tc = 0; tc < 8; tc++) {
                             if (isValidMove(fr, fc, tr, tc, currentBoard)) {
-                                legalMoves.push({ fr, fc, tr, tc });
+                                const target = currentBoard[tr][tc];
+                                const move = { fr, fc, tr, tc, target };
+                                if (target) captures.push(move);
+                                else normalMoves.push(move);
                             }
                         }
                     }
                 }
             }
         }
-        if (legalMoves.length === 0) {
+
+        if (captures.length === 0 && normalMoves.length === 0) {
             setIsGameOver(true);
-            setStatus("Checkmate! You win!");
-            updateBalance(200);
+            setWinner('player');
+            setStatus("🎉 You win! Opponent has no moves.");
+            finishBackendSession(true);
             return;
         }
-        const move = legalMoves[Math.floor(Math.random() * legalMoves.length)];
+
+        // Prefer king capture > other captures > random move
+        const kingCapture = captures.find(m => m.target === 'K');
+        const move = kingCapture || (captures.length > 0
+            ? captures[Math.floor(Math.random() * captures.length)]
+            : normalMoves[Math.floor(Math.random() * normalMoves.length)]);
+
         const newBoard = currentBoard.map(row => [...row]);
+        const captured = newBoard[move.tr][move.tc];
         newBoard[move.tr][move.tc] = currentBoard[move.fr][move.fc];
         newBoard[move.fr][move.fc] = '';
         setBoard(newBoard);
+
+        // AI captured the white king?
+        if (captured === 'K') {
+            setIsGameOver(true);
+            setWinner('cpu');
+            setStatus("💔 Checkmate! Your king fell.");
+            finishBackendSession(false);
+            return;
+        }
+
         setTurn('white');
         setStatus("Your turn (White)");
     };
 
-    const resetGame = () => {
+    const resetGame = async () => {
         setBoard(INITIAL_BOARD);
         setTurn('white');
         setStatus("Your turn (White)");
         setIsGameOver(false);
+        setWinner(null);
+        setCoinsEarned(0);
         setIsSearching(true);
+        try {
+            const { session } = await startSession('chess');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
         setTimeout(() => setIsSearching(false), 1500);
     };
 
@@ -222,6 +315,7 @@ const Chess = () => {
                             <span className="ch-title-purple"> Chess.</span>
                             <span className="ch-title-green"> Checkmate.</span>
                         </h1>
+                        <p className="ch-subtitle">Capture the opponent's king to win!</p>
                     </div>
 
                     <div className="ch-status-row">
@@ -261,6 +355,18 @@ const Chess = () => {
                             )}
                         </div>
                     </div>
+
+                    {isGameOver && (
+                        <div className="ch-modal-overlay">
+                            <div className="ch-modal-content">
+                                <h2>{winner === 'player' ? '🎉 Checkmate!' : '💔 Defeat'}</h2>
+                                <p className="ch-coin-reward">+{coinsEarned} Z Coins</p>
+                                <button onClick={resetGame} className="ch-modal-btn">
+                                    Play Again
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <style>{styles}</style>
@@ -310,6 +416,11 @@ const styles = `
         background: linear-gradient(135deg, #22c55e, #16a34a);
         -webkit-background-clip: text; background-clip: text;
         -webkit-text-fill-color: transparent;
+    }
+    .ch-subtitle {
+        color: var(--text-secondary);
+        font-size: 1rem; line-height: 1.6;
+        max-width: 480px; margin: 0.4rem auto 0;
     }
 
     .ch-status-row {
@@ -376,7 +487,7 @@ const styles = `
     .ch-light { background-color: #eeeed2; }
     .ch-dark { background-color: #769656; }
     .ch-selected { background-color: #baca44 !important; }
-    
+
     .ch-piece {
         font-size: min(10vw, 48px);
         line-height: 1;
@@ -384,9 +495,7 @@ const styles = `
         z-index: 2;
         transition: transform 0.1s;
     }
-    .ch-square:hover .ch-piece {
-        transform: scale(1.05);
-    }
+    .ch-square:hover .ch-piece { transform: scale(1.05); }
     .ch-piece-white {
         color: #ffffff;
         filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6));
@@ -395,7 +504,7 @@ const styles = `
         color: #000000;
         filter: drop-shadow(0 1px 1px rgba(255,255,255,0.4));
     }
-    
+
     .ch-searching-overlay {
         position: absolute; inset: 0;
         background: rgba(0,0,0,0.7);
@@ -412,6 +521,29 @@ const styles = `
         margin-bottom: 1rem;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .ch-modal-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 100; backdrop-filter: blur(8px);
+    }
+    .ch-modal-content {
+        background: white; padding: 3rem; border-radius: 24px;
+        text-align: center; font-family: var(--font-ui);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .ch-modal-content h2 { font-size: 2.2rem; margin: 0 0 1rem; color: var(--text-primary); }
+    .ch-coin-reward { font-size: 1.5rem !important; color: #FFD700 !important; font-weight: 800; margin-bottom: 2rem; }
+    .ch-modal-btn {
+        background: linear-gradient(135deg, #8e44ad, #ef4444);
+        color: white; border: none; padding: 1rem 3rem; border-radius: 99px;
+        font-size: 1.2rem; font-weight: 800; cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 10px 20px rgba(142,68,173,0.3);
+    }
+    .ch-modal-btn:hover { transform: translateY(-2px); box-shadow: 0 15px 25px rgba(142,68,173,0.4); }
+
     @media (max-width: 640px) {
         .ch-inner { padding: 2rem 1.25rem 3rem; }
     }

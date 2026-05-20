@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw } from 'lucide-react';
 
 const GRID_SIZE = 10;
 
 const SeaBattle = () => {
-    const { updateBalance } = useGame();
+    const { refreshBalance } = useGame();
     const [userGrid, setUserGrid] = useState(Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(null)));
     const [aiGrid, setAiGrid] = useState(Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(null)));
     const [aiShips, setAiShips] = useState([]);
@@ -14,8 +15,45 @@ const SeaBattle = () => {
     const [turn, setTurn] = useState('user');
     const [status, setStatus] = useState("Your turn! Target the enemy grid.");
     const [gameOver, setGameOver] = useState(false);
+    const [winner, setWinner] = useState(null);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
 
+    // Start backend session
+    const beginBackendSession = async () => {
+        try {
+            const { session } = await startSession('sea-battle');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
+    };
+
+    // End backend session
+    const finishBackendSession = async (didWin) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const result = didWin ? 'win' : 'loss';
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: didWin ? 1 : 0,
+                finalState: { userGrid, aiGrid }
+            });
+            await refreshBalance();
+            setCoinsEarned(res.coinChange || 0);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
+
+    // Background canvas
     useEffect(() => {
         const canvas = bgCanvasRef.current;
         if (!canvas) return;
@@ -30,11 +68,11 @@ const SeaBattle = () => {
             let radius = Math.max(W, H);
 
             ctx.clearRect(0, 0, W, H);
-            
+
             ctx.strokeStyle = 'rgba(59, 130, 246, 0.1)';
             ctx.lineWidth = 1;
-            for(let i=0; i<W; i+=50) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
-            for(let i=0; i<H; i+=50) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
+            for (let i = 0; i < W; i += 50) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
+            for (let i = 0; i < H; i += 50) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
 
             ctx.save();
             ctx.translate(cx, cy);
@@ -44,7 +82,7 @@ const SeaBattle = () => {
             ctx.arc(0, 0, radius, 0, 0.2);
             ctx.fillStyle = 'rgba(16, 185, 129, 0.1)';
             ctx.fill();
-            ctx.lineTo(0,0);
+            ctx.lineTo(0, 0);
             ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
             ctx.stroke();
             ctx.restore();
@@ -63,13 +101,17 @@ const SeaBattle = () => {
         return () => clearTimeout(timer);
     }, []);
 
-    const initGame = () => {
+    const initGame = async () => {
         const ships = generateShips();
         setAiShips(ships);
         setAiGrid(Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(null)));
         setUserGrid(Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(null)));
         setGameOver(false);
+        setWinner(null);
+        setCoinsEarned(0);
         setTurn('user');
+        setStatus("Your turn! Target the enemy grid.");
+        await beginBackendSession();
     };
 
     const generateShips = () => {
@@ -147,8 +189,10 @@ const SeaBattle = () => {
         grid.forEach(row => row.forEach(cell => { if (cell === 'hit') hits++; }));
         if (hits >= 17) {
             setGameOver(true);
-            setStatus(player === 'user' ? "Victory! You sank the entire fleet!" : "Defeat! Your fleet is destroyed.");
-            if (player === 'user') updateBalance(100);
+            const didWin = player === 'user';
+            setWinner(didWin ? 'player' : 'cpu');
+            setStatus(didWin ? "🎉 Victory! You sank the entire fleet!" : "💔 Defeat! Your fleet is destroyed.");
+            finishBackendSession(didWin);
         }
     };
 
@@ -172,11 +216,9 @@ const SeaBattle = () => {
                         <div className="sb-status">
                             {isSearching ? "Establishing Satellite Connection..." : status}
                         </div>
-                        {gameOver && (
-                            <button className="sb-restart-btn" onClick={initGame}>
-                                <RotateCcw size={15} /> Restart Mission
-                            </button>
-                        )}
+                        <button className="sb-restart-btn" onClick={initGame}>
+                            <RotateCcw size={15} /> Restart
+                        </button>
                     </div>
 
                     <div className="sb-board-wrap">
@@ -215,6 +257,18 @@ const SeaBattle = () => {
                             </div>
                         </div>
                     </div>
+
+                    {gameOver && (
+                        <div className="sb-modal-overlay">
+                            <div className="sb-modal-content">
+                                <h2>{winner === 'player' ? '🎉 Victory!' : '💔 Defeat'}</h2>
+                                <p className="sb-coin-reward">+{coinsEarned} Z Coins</p>
+                                <button onClick={initGame} className="sb-modal-btn">
+                                    Play Again
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <style>{styles}</style>
@@ -355,6 +409,28 @@ const styles = `
         0% { transform: scale(0.5); opacity: 0; }
         100% { transform: scale(1); opacity: 1; }
     }
+
+    .sb-modal-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 100; backdrop-filter: blur(8px);
+    }
+    .sb-modal-content {
+        background: white; padding: 3rem; border-radius: 24px;
+        text-align: center; font-family: var(--font-ui);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .sb-modal-content h2 { font-size: 2.2rem; margin: 0 0 1rem; color: var(--text-primary); }
+    .sb-coin-reward { font-size: 1.5rem !important; color: #FFD700 !important; font-weight: 800; margin-bottom: 2rem; }
+    .sb-modal-btn {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: white; border: none; padding: 1rem 3rem; border-radius: 99px;
+        font-size: 1.2rem; font-weight: 800; cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3);
+    }
+    .sb-modal-btn:hover { transform: translateY(-2px); box-shadow: 0 15px 25px rgba(59, 130, 246, 0.4); }
 
     @media (max-width: 768px) {
         .sb-inner { padding: 2rem 1rem 3rem; }

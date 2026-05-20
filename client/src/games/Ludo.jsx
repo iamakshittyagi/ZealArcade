@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import Layout from '../components/Layout';
 import { RotateCcw } from 'lucide-react';
 
@@ -53,10 +54,6 @@ const renderBoardCells = () => {
             else if (r === 2 && c === 9) { cellClass += " bg-yellow-safe lu-star-cell"; content = "★"; }
             else if (r === 9 && c === 14) { cellClass += " bg-blue-safe lu-star-cell"; content = "★"; }
             else if (r === 14 && c === 7) { cellClass += " bg-red-safe lu-star-cell"; content = "★"; }
-            else if (r === 3 && c === 7) { cellClass += " lu-star-cell"; content = "★"; }
-            else if (r === 7 && c === 13) { cellClass += " lu-star-cell"; content = "★"; }
-            else if (r === 13 && c === 9) { cellClass += " lu-star-cell"; content = "★"; }
-            else if (r === 9 && c === 3) { cellClass += " lu-star-cell"; content = "★"; }
 
             cells.push(
                 <div key={`cell-${r}-${c}`} className={cellClass} style={{ gridArea: `${r} / ${c} / ${r + 1} / ${c + 1}` }}>
@@ -73,7 +70,7 @@ const renderBoardVisuals = () => {
         <>
             <div className="lu-base bg-green" style={{ gridArea: '1 / 1 / 7 / 7' }} />
             <div className="lu-base-inner" style={{ gridArea: '2 / 2 / 6 / 6' }} />
-            
+
             <div className="lu-base bg-yellow" style={{ gridArea: '1 / 10 / 7 / 16' }} />
             <div className="lu-base-inner" style={{ gridArea: '2 / 11 / 6 / 15' }} />
 
@@ -103,29 +100,28 @@ const renderBoardVisuals = () => {
     );
 };
 
-const Ludo = () => {
-    const { user, updateBalance } = useGame();
-    const [gamePhase, setGamePhase] = useState('SETUP');
-    const [numHumanPlayers, setNumHumanPlayers] = useState(1);
-    const [playerConfigs, setPlayerConfigs] = useState([
-        { name: user?.username || user || 'Player 1', color: 'red', isAI: false },
-        { name: 'AI 1', color: 'green', isAI: true },
-        { name: 'AI 2', color: 'blue', isAI: true },
-        { name: 'AI 3', color: 'yellow', isAI: true }
-    ]);
+const initialPlayers = (username) => ([
+    { name: username || 'You', color: 'red', isAI: false, pawns: Array(4).fill(null).map(() => ({ pos: -1, finished: false })) },
+    { name: 'Green CPU', color: 'green', isAI: true, pawns: Array(4).fill(null).map(() => ({ pos: -1, finished: false })) },
+    { name: 'Blue CPU', color: 'blue', isAI: true, pawns: Array(4).fill(null).map(() => ({ pos: -1, finished: false })) },
+    { name: 'Yellow CPU', color: 'yellow', isAI: true, pawns: Array(4).fill(null).map(() => ({ pos: -1, finished: false })) },
+]);
 
-    const [players, setPlayers] = useState([]);
+const Ludo = () => {
+    const { user, refreshBalance } = useGame();
+    const [players, setPlayers] = useState(() => initialPlayers(user?.username));
     const [currentTurn, setCurrentTurn] = useState(0);
     const [diceValue, setDiceValue] = useState(null);
-    const [status, setStatus] = useState("");
+    const [status, setStatus] = useState("Your turn! Roll the dice 🎲");
     const [isRolling, setIsRolling] = useState(false);
     const [isGameOver, setIsGameOver] = useState(false);
+    const [winner, setWinner] = useState(null);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const [waitingForChoice, setWaitingForChoice] = useState(false);
-
     const bgCanvasRef = useRef(null);
-    const availableColors = ['red', 'green', 'blue', 'yellow'];
+    const sessionIdRef = useRef(null);
 
-    // ── Background particle canvas (matches Welcome/Arcade/Rewards) ──
+    // Background particles
     useEffect(() => {
         const canvas = bgCanvasRef.current;
         if (!canvas) return;
@@ -176,77 +172,39 @@ const Ludo = () => {
         return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', onResize); };
     }, []);
 
-    // ── Game logic (unchanged) ──
-    const handleSetupSubmit = () => {
-        const initialPlayers = playerConfigs.map(config => ({
-            ...config,
-            pawns: [
-                { pos: -1, finished: false },
-                { pos: -1, finished: false },
-                { pos: -1, finished: false },
-                { pos: -1, finished: false }
-            ]
-        }));
-        setPlayers(initialPlayers);
-        setGamePhase('PLAYING');
-        setCurrentTurn(0);
-        setStatus(`${initialPlayers[0].name}'s turn! Roll the dice!`);
-    };
-
-    const updateHumanCount = (count) => {
-        setNumHumanPlayers(count);
-        const newConfigs = [...playerConfigs];
-        for (let i = 0; i < 4; i++) {
-            if (i < count) {
-                newConfigs[i].isAI = false;
-                if (newConfigs[i].name.startsWith('AI')) newConfigs[i].name = `Player ${i + 1}`;
-            } else {
-                newConfigs[i].isAI = true;
-                newConfigs[i].name = `AI ${i - count + 1}`;
+    // Begin backend session on mount
+    useEffect(() => {
+        const begin = async () => {
+            try {
+                const { session } = await startSession('ludo');
+                sessionIdRef.current = session._id;
+            } catch (err) {
+                console.error('Could not start session:', err);
+                sessionIdRef.current = null;
             }
+        };
+        begin();
+    }, []);
+
+    // End backend session
+    const finishBackendSession = async (didWin, winnerName) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
         }
-        setPlayerConfigs(newConfigs);
-    };
-
-    const updatePlayerConfig = (index, field, value) => {
-        const newConfigs = [...playerConfigs];
-        newConfigs[index][field] = value;
-        setPlayerConfigs(newConfigs);
-    };
-
-    const rollDice = () => {
-        if (isRolling || isGameOver || gamePhase !== 'PLAYING' || waitingForChoice) return;
-        setIsRolling(true);
-        const finalRoll = Math.floor(Math.random() * 6) + 1;
-        let rolls = 0;
-        const interval = setInterval(() => {
-            setDiceValue(Math.floor(Math.random() * 6) + 1);
-            rolls++;
-            if (rolls > 10) {
-                clearInterval(interval);
-                setDiceValue(finalRoll);
-                processRoll(finalRoll);
-            }
-        }, 50);
-    };
-
-    const processRoll = (roll) => {
-        const p = players[currentTurn];
-        const movablePawns = getMovablePawns(p, roll);
-        if (movablePawns.length === 0) {
-            setStatus(`${p.name} rolled a ${roll}. No moves possible!`);
-            setTimeout(() => { nextTurn(); setIsRolling(false); }, 1000);
-        } else if (movablePawns.length === 1 && (p.isAI || roll !== 6 || p.pawns.filter(pn => pn.pos >= 0).length === 0)) {
-            movePawn(movablePawns[0], roll);
-        } else {
-            setStatus(`${p.name}, choose a pawn to move!`);
-            setWaitingForChoice(true);
-            if (p.isAI) {
-                setTimeout(() => {
-                    const choice = aiChoosePawn(p, movablePawns, roll);
-                    movePawn(choice, roll);
-                }, 1000);
-            }
+        try {
+            const result = didWin ? 'win' : 'loss';
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: didWin ? 1 : 0,
+                finalState: { winner: winnerName }
+            });
+            await refreshBalance();
+            setCoinsEarned(res.coinChange || 0);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
         }
     };
 
@@ -271,59 +229,130 @@ const Ludo = () => {
         return movableIndices[0];
     };
 
-    const movePawn = (pawnIdx, roll) => {
+    // CPU auto-rolls and plays
+    useEffect(() => {
+        if (isGameOver || isRolling || waitingForChoice) return;
         const p = players[currentTurn];
-        const newPlayers = [...players];
-        const pawn = newPlayers[currentTurn].pawns[pawnIdx];
-        let nextPos;
-        if (pawn.pos === -1) nextPos = 0;
-        else nextPos = pawn.pos + roll;
-        pawn.pos = nextPos;
-        if (nextPos === PATHS[p.color].length - 1) {
-            pawn.finished = true;
-            if (!p.isAI) updateBalance(100);
-            setStatus(`${p.name} finished a pawn! 🎉`);
+        if (!p || !p.isAI) return;
+
+        const timeout = setTimeout(() => {
+            const roll = Math.floor(Math.random() * 6) + 1;
+            setDiceValue(roll);
+            setStatus(`${p.name} rolled a ${roll}.`);
+            const movable = getMovablePawns(p, roll);
+            if (movable.length === 0) {
+                setTimeout(() => nextTurn(), 800);
+            } else {
+                const choice = aiChoosePawn(p, movable, roll);
+                setTimeout(() => doMovePawn(choice, roll), 600);
+            }
+        }, 800);
+
+        return () => clearTimeout(timeout);
+    }, [currentTurn, isGameOver, isRolling, waitingForChoice, players]);
+
+    const rollDice = () => {
+        if (isRolling || isGameOver || waitingForChoice) return;
+        if (players[currentTurn].isAI) return;
+        setIsRolling(true);
+        const finalRoll = Math.floor(Math.random() * 6) + 1;
+        let rolls = 0;
+        const interval = setInterval(() => {
+            setDiceValue(Math.floor(Math.random() * 6) + 1);
+            rolls++;
+            if (rolls > 10) {
+                clearInterval(interval);
+                setDiceValue(finalRoll);
+                processHumanRoll(finalRoll);
+            }
+        }, 50);
+    };
+
+    const processHumanRoll = (roll) => {
+        const p = players[currentTurn];
+        const movable = getMovablePawns(p, roll);
+        if (movable.length === 0) {
+            setStatus(`You rolled ${roll}. No moves possible!`);
+            setTimeout(() => { nextTurn(); setIsRolling(false); }, 1000);
+        } else if (movable.length === 1) {
+            doMovePawn(movable[0], roll);
         } else {
-            setStatus(`${p.name} moved a pawn!`);
+            setStatus(`You rolled ${roll}! Choose a pawn to move.`);
+            setWaitingForChoice(true);
+            setIsRolling(false);
         }
+    };
+
+    const doMovePawn = (pawnIdx, roll) => {
+        const p = players[currentTurn];
+        const newPlayers = players.map((pl, i) => i === currentTurn ? {
+            ...pl,
+            pawns: pl.pawns.map((pn, j) => {
+                if (j !== pawnIdx) return pn;
+                const newPos = pn.pos === -1 ? 0 : pn.pos + roll;
+                const finished = newPos === PATHS[p.color].length - 1;
+                return { pos: newPos, finished };
+            })
+        } : pl);
         setPlayers(newPlayers);
         setWaitingForChoice(false);
+
+        const updatedPlayer = newPlayers[currentTurn];
+        const allFinished = updatedPlayer.pawns.every(pn => pn.finished);
+
+        if (allFinished) {
+            setIsGameOver(true);
+            setWinner(updatedPlayer);
+            setStatus(`${updatedPlayer.name} wins! 🎉`);
+            finishBackendSession(!updatedPlayer.isAI, updatedPlayer.name);
+            setIsRolling(false);
+            return;
+        }
+
         setTimeout(() => {
-            if (roll === 6 && !newPlayers[currentTurn].pawns.every(pn => pn.finished)) {
-                setStatus(`${p.name} rolled a 6! Roll again! 🎲`);
+            if (roll === 6) {
+                setStatus(`${p.name} rolled a 6! Roll again 🎲`);
                 setIsRolling(false);
             } else {
                 nextTurn(newPlayers);
                 setIsRolling(false);
             }
-        }, 1000);
+        }, 800);
     };
 
     const nextTurn = (currentPlayers = players) => {
-        if (currentPlayers.every(p => p.pawns.every(pn => pn.finished))) {
-            setIsGameOver(true);
-            setStatus("Game Over! All players finished!");
-            return;
-        }
-        let nextIdx = (currentTurn + 1) % 4;
-        while (currentPlayers[nextIdx].pawns.every(pn => pn.finished)) {
-            nextIdx = (nextIdx + 1) % 4;
-        }
+        const nextIdx = (currentTurn + 1) % 4;
         setCurrentTurn(nextIdx);
-        setStatus(`${currentPlayers[nextIdx].name}'s turn!`);
+        const nextPlayer = currentPlayers[nextIdx];
+        if (!nextPlayer.isAI) {
+            setStatus(`Your turn! Roll the dice 🎲`);
+        } else {
+            setStatus(`${nextPlayer.name}'s turn...`);
+        }
     };
 
     const handlePawnClick = (pIdx) => {
         if (!waitingForChoice || players[currentTurn].isAI) return;
         const movable = getMovablePawns(players[currentTurn], diceValue);
-        if (movable.includes(pIdx)) movePawn(pIdx, diceValue);
+        if (movable.includes(pIdx)) doMovePawn(pIdx, diceValue);
     };
 
-    const resetGame = () => {
-        setGamePhase('SETUP');
-        setIsGameOver(false);
+    const resetGame = async () => {
+        setPlayers(initialPlayers(user?.username));
+        setCurrentTurn(0);
         setDiceValue(null);
+        setStatus("Your turn! Roll the dice 🎲");
+        setIsGameOver(false);
+        setWinner(null);
+        setCoinsEarned(0);
         setWaitingForChoice(false);
+        try {
+            const { session } = await startSession('ludo');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
     };
 
     const getTokenStyle = (color) => {
@@ -336,85 +365,6 @@ const Ludo = () => {
         }
     };
 
-    // ── SETUP screen ──
-    if (gamePhase === 'SETUP') {
-        return (
-            <Layout>
-                <div className="lu-root">
-                    <canvas ref={bgCanvasRef} className="lu-bg-canvas" />
-                    <div className="lu-blob lu-blob-1" />
-                    <div className="lu-blob lu-blob-2" />
-
-                    <div className="lu-inner">
-                        <div className="lu-page-header">
-                            <h1 className="lu-title">
-                                <span className="lu-title-dark">Set up</span>
-                                <span className="lu-title-purple"> your</span>
-                                <span className="lu-title-green"> Ludo board.</span>
-                            </h1>
-                            <p className="lu-subtitle">Pick how many humans are playing, then name your team.</p>
-                        </div>
-
-                        <div className="lu-setup-card">
-                            <div className="lu-setup-section">
-                                <label className="lu-setup-label">Number of Human Players</label>
-                                <div className="lu-count-row">
-                                    {[1, 2, 3, 4].map(n => (
-                                        <button
-                                            key={n}
-                                            onClick={() => updateHumanCount(n)}
-                                            className={`lu-count-btn ${numHumanPlayers === n ? 'lu-count-btn--active' : ''}`}
-                                        >
-                                            {n}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="lu-players-list">
-                                {playerConfigs.map((config, i) => (
-                                    <div key={i} className="lu-player-row" style={{ borderLeftColor: config.color === 'yellow' ? '#eab308' : config.color }}>
-                                        <div className="lu-player-field">
-                                            <label className="lu-field-label">
-                                                {config.isAI ? `AI ${i - numHumanPlayers + 1}` : `Player ${i + 1}`}
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={config.name}
-                                                disabled={config.isAI}
-                                                onChange={(e) => updatePlayerConfig(i, 'name', e.target.value)}
-                                                className="lu-text-input"
-                                            />
-                                        </div>
-                                        <div className="lu-color-field">
-                                            <label className="lu-field-label">Color</label>
-                                            <select
-                                                value={config.color}
-                                                onChange={(e) => updatePlayerConfig(i, 'color', e.target.value)}
-                                                className="lu-select-input"
-                                            >
-                                                {availableColors.map(c => (
-                                                    <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <button onClick={handleSetupSubmit} className="lu-start-btn">
-                                Start Game →
-                            </button>
-                        </div>
-                    </div>
-
-                    <style>{styles}</style>
-                </div>
-            </Layout>
-        );
-    }
-
-    // ── PLAYING screen ──
     return (
         <Layout>
             <div className="lu-root">
@@ -429,9 +379,9 @@ const Ludo = () => {
                             <span className="lu-title-purple"> Roll.</span>
                             <span className="lu-title-green"> Race. Win.</span>
                         </h1>
+                        <p className="lu-subtitle">You're 🔴 Red vs 3 computer opponents. First to finish all 4 pawns wins.</p>
                     </div>
 
-                    {/* Status bar */}
                     <div className="lu-status-row">
                         <div className="lu-status" style={{
                             color: players[currentTurn] ? (
@@ -439,15 +389,12 @@ const Ludo = () => {
                                 players[currentTurn].color === 'green' ? '#22c55e' :
                                 players[currentTurn].color === 'yellow' ? '#eab308' : '#3b82f6'
                             ) : 'var(--text-primary)'
-                        }}>
-                            {status}
-                        </div>
+                        }}>{status}</div>
                         <button className="lu-restart-btn" onClick={resetGame}>
                             <RotateCcw size={15} /> Restart
                         </button>
                     </div>
 
-                    {/* Board & Controls Wrap */}
                     <div className="lu-board-wrap">
                         <div className="lu-board">
                             {renderBoardVisuals()}
@@ -477,14 +424,6 @@ const Ludo = () => {
                                                     opacity: pawn.finished ? 0.3 : 1,
                                                 }}
                                             />
-                                            {(pawn.pos >= 0 || (pawn.pos === -1 && pnIdx === 0)) && (
-                                                <div
-                                                    className="lu-pawn-label"
-                                                    style={{ borderColor: player.color === 'yellow' ? '#eab308' : player.color }}
-                                                >
-                                                    {player.name}
-                                                </div>
-                                            )}
                                         </div>
                                     );
                                 })
@@ -499,14 +438,23 @@ const Ludo = () => {
                             >
                                 {isGameOver
                                     ? 'Game Over'
-                                    : (waitingForChoice && !players[currentTurn].isAI
-                                        ? 'Choose Pawn'
-                                        : (players[currentTurn] && players[currentTurn].isAI ? 'AI Thinking…' : 'Roll Dice 🎲'))}
+                                    : (waitingForChoice ? 'Choose Pawn' : (players[currentTurn]?.isAI ? `${players[currentTurn].name} thinking…` : 'Roll Dice 🎲'))}
                             </button>
-
                             <div className="lu-dice">{diceValue || '–'}</div>
                         </div>
                     </div>
+
+                    {isGameOver && (
+                        <div className="lu-modal-overlay">
+                            <div className="lu-modal-content">
+                                <h2>{winner && !winner.isAI ? '🎉 You Win!' : `💔 ${winner?.name} Wins`}</h2>
+                                <p className="lu-coin-reward">+{coinsEarned} Z Coins</p>
+                                <button onClick={resetGame} className="lu-modal-btn">
+                                    Play Again
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <style>{styles}</style>
@@ -560,105 +508,9 @@ const styles = `
     .lu-subtitle {
         color: var(--text-secondary);
         font-size: 1rem; line-height: 1.6;
-        max-width: 480px; margin: 0 auto;
+        max-width: 480px; margin: 0.4rem auto 0;
     }
 
-    /* Setup */
-    .lu-setup-card {
-        background: rgba(255,255,255,0.9);
-        border: 1px solid rgba(142,68,173,0.14);
-        border-radius: 20px;
-        padding: 2rem;
-        backdrop-filter: blur(12px);
-        box-shadow: 0 20px 60px rgba(142,68,173,0.12), 0 4px 16px rgba(0,0,0,0.06);
-    }
-    .lu-setup-section { margin-bottom: 1.5rem; }
-    .lu-setup-label {
-        display: block;
-        font-size: 0.8rem; font-weight: 700;
-        color: var(--text-secondary);
-        text-transform: uppercase; letter-spacing: 0.07em;
-        margin-bottom: 0.75rem;
-        font-family: var(--font-ui);
-    }
-    .lu-count-row { display: flex; gap: 0.75rem; }
-    .lu-count-btn {
-        flex: 1;
-        padding: 0.7rem 1rem;
-        border-radius: 12px;
-        border: 1.5px solid rgba(142,68,173,0.2);
-        background: rgba(142,68,173,0.04);
-        color: var(--accent-primary);
-        font-weight: 700; font-family: var(--font-ui);
-        font-size: 1rem; cursor: pointer;
-        transition: all 0.25s;
-    }
-    .lu-count-btn:hover {
-        background: rgba(142,68,173,0.1);
-        transform: translateY(-1px);
-    }
-    .lu-count-btn--active {
-        background: linear-gradient(135deg, #8e44ad, #732d91);
-        color: white; border-color: transparent;
-        box-shadow: 0 4px 14px rgba(142,68,173,0.28);
-    }
-
-    .lu-players-list {
-        display: flex; flex-direction: column; gap: 0.85rem;
-        margin-bottom: 1.5rem;
-    }
-    .lu-player-row {
-        display: flex; gap: 1rem; align-items: center;
-        padding: 0.85rem 1rem;
-        border-radius: 12px;
-        background: rgba(142,68,173,0.04);
-        border: 1px solid rgba(142,68,173,0.12);
-        border-left-width: 5px; border-left-style: solid;
-    }
-    .lu-player-field { flex: 1; }
-    .lu-color-field { width: 130px; }
-    .lu-field-label {
-        display: block;
-        font-size: 0.7rem; font-weight: 700;
-        color: var(--text-secondary);
-        text-transform: uppercase; letter-spacing: 0.06em;
-        margin-bottom: 0.3rem;
-        font-family: var(--font-ui);
-    }
-    .lu-text-input, .lu-select-input {
-        width: 100%;
-        padding: 0.55rem 0.75rem;
-        border-radius: 10px;
-        border: 1.5px solid rgba(142,68,173,0.18);
-        background: white;
-        color: var(--text-primary);
-        font-family: inherit; font-size: 0.9rem;
-        outline: none; transition: all 0.2s;
-        box-sizing: border-box;
-    }
-    .lu-text-input:focus, .lu-select-input:focus {
-        border-color: #8e44ad;
-        box-shadow: 0 0 0 3px rgba(142,68,173,0.1);
-    }
-    .lu-text-input:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    .lu-start-btn {
-        width: 100%;
-        padding: 1rem 2rem;
-        background: linear-gradient(135deg, #8e44ad, #732d91);
-        color: white; border: none;
-        border-radius: 999px;
-        font-weight: 700; font-family: var(--font-ui);
-        font-size: 1rem; cursor: pointer;
-        transition: all 0.3s;
-        box-shadow: 0 6px 20px rgba(142,68,173,0.28);
-    }
-    .lu-start-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 28px rgba(142,68,173,0.38);
-    }
-
-    /* Playing */
     .lu-status-row {
         display: flex; justify-content: space-between; align-items: center;
         margin-bottom: 1.2rem;
@@ -742,7 +594,7 @@ const styles = `
         border-radius: 50%;
         box-shadow: inset 0 2px 4px rgba(0,0,0,0.15);
     }
-    
+
     .lu-cell {
         border: 1px solid rgba(0,0,0,0.05);
         display: flex; align-items: center; justify-content: center;
@@ -761,6 +613,7 @@ const styles = `
     .lu-center-t-right { position: absolute; inset: 0; clip-path: polygon(100% 0, 100% 100%, 50% 50%); }
     .lu-center-t-bottom { position: absolute; inset: 0; clip-path: polygon(0 100%, 100% 100%, 50% 50%); }
     .lu-center-t-left { position: absolute; inset: 0; clip-path: polygon(0 0, 0 100%, 50% 50%); }
+
     .lu-pawn-wrap {
         display: flex; align-items: center; justify-content: center;
         position: relative;
@@ -777,18 +630,6 @@ const styles = `
         box-shadow: 0 0 10px #fff, 0 4px 8px rgba(0,0,0,0.4);
         border: 2px solid white;
         animation: luPulse 1s infinite;
-    }
-    .lu-pawn-label {
-        position: absolute;
-        top: -18px; left: 50%;
-        transform: translateX(-50%);
-        font-size: 0.6rem; font-weight: bold;
-        background: rgba(0,0,0,0.8); color: white;
-        padding: 1px 5px; border-radius: 8px;
-        white-space: nowrap; z-index: 20;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        border: 1px solid;
-        pointer-events: none;
     }
 
     .lu-controls {
@@ -829,10 +670,30 @@ const styles = `
         100% { transform: scale(1); }
     }
 
+    .lu-modal-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 100; backdrop-filter: blur(8px);
+    }
+    .lu-modal-content {
+        background: white; padding: 3rem; border-radius: 24px;
+        text-align: center; font-family: var(--font-ui);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .lu-modal-content h2 { font-size: 2.2rem; margin: 0 0 1rem; color: var(--text-primary); }
+    .lu-coin-reward { font-size: 1.5rem !important; color: #FFD700 !important; font-weight: 800; margin-bottom: 2rem; }
+    .lu-modal-btn {
+        background: linear-gradient(135deg, #8e44ad, #ef4444);
+        color: white; border: none; padding: 1rem 3rem; border-radius: 99px;
+        font-size: 1.2rem; font-weight: 800; cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 10px 20px rgba(142,68,173,0.3);
+    }
+    .lu-modal-btn:hover { transform: translateY(-2px); box-shadow: 0 15px 25px rgba(142,68,173,0.4); }
+
     @media (max-width: 640px) {
         .lu-inner { padding: 2rem 1.25rem 3rem; }
-        .lu-player-row { flex-direction: column; align-items: stretch; }
-        .lu-color-field { width: 100%; }
     }
 `;
 

@@ -1,17 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useGame } from '../context/GameContext';
+import { startSession, endSession } from '../api/games';
 import { RotateCcw } from 'lucide-react';
 
+const WIN_SCORE = 5;
+
 const PingPong = () => {
-    const { updateBalance } = useGame();
+    const { refreshBalance } = useGame();
     const canvasRef = useRef(null);
     const bgCanvasRef = useRef(null);
+    const sessionIdRef = useRef(null);
+
     const [score, setScore] = useState(0);
     const [aiScore, setAiScore] = useState(0);
-    const [gameState, setGameState] = useState('SEARCHING');
+    const [gameState, setGameState] = useState('SEARCHING');  // SEARCHING | PLAYING | GAME_OVER
+    const [winner, setWinner] = useState(null);
+    const [coinsEarned, setCoinsEarned] = useState(0);
     const animationIdRef = useRef(null);
 
+    // Refs to read scores inside the game loop without stale closure
+    const scoreRef = useRef(0);
+    const aiScoreRef = useRef(0);
+    useEffect(() => { scoreRef.current = score; }, [score]);
+    useEffect(() => { aiScoreRef.current = aiScore; }, [aiScore]);
+
+    // Background canvas
     useEffect(() => {
         const canvas = bgCanvasRef.current;
         if (!canvas) return;
@@ -67,10 +81,50 @@ const PingPong = () => {
     const player = useRef({ x: 0, y: 160 });
     const ai = useRef({ x: 590, y: 160 });
 
+    // Start backend session
+    const beginBackendSession = async () => {
+        try {
+            const { session } = await startSession('ping-pong');
+            sessionIdRef.current = session._id;
+        } catch (err) {
+            console.error('Could not start session:', err);
+            sessionIdRef.current = null;
+        }
+    };
+
+    // End backend session
+    const finishBackendSession = async (didWin, finalPlayerScore, finalAiScore) => {
+        if (!sessionIdRef.current) {
+            setCoinsEarned(0);
+            return;
+        }
+        try {
+            const result = didWin ? 'win' : 'loss';
+            const res = await endSession(sessionIdRef.current, {
+                result,
+                score: finalPlayerScore,
+                finalState: { playerScore: finalPlayerScore, aiScore: finalAiScore }
+            });
+            await refreshBalance();
+            setCoinsEarned(res.coinChange || 0);
+            sessionIdRef.current = null;
+        } catch (err) {
+            console.error('Could not end session:', err);
+            setCoinsEarned(0);
+        }
+    };
+
     useEffect(() => {
+        beginBackendSession();
         const timer = setTimeout(() => setGameState('PLAYING'), 2000);
         return () => clearTimeout(timer);
     }, []);
+
+    const endMatch = (playerWon) => {
+        setGameState('GAME_OVER');
+        setWinner(playerWon ? 'player' : 'ai');
+        finishBackendSession(playerWon, scoreRef.current, aiScoreRef.current);
+    };
 
     const update = () => {
         if (gameState !== 'PLAYING') return;
@@ -97,12 +151,21 @@ const PingPong = () => {
         }
 
         if (b.x < 0) {
-            setAiScore(s => s + 1);
+            const newAiScore = aiScoreRef.current + 1;
+            setAiScore(newAiScore);
+            if (newAiScore >= WIN_SCORE) {
+                endMatch(false);
+                return;
+            }
             resetBall();
         }
         if (b.x > 600) {
-            setScore(s => s + 1);
-            updateBalance(10);
+            const newScore = scoreRef.current + 1;
+            setScore(newScore);
+            if (newScore >= WIN_SCORE) {
+                endMatch(true);
+                return;
+            }
             resetBall();
         }
     };
@@ -171,13 +234,16 @@ const PingPong = () => {
         player.current.y = Math.max(0, Math.min(320, y - paddleHeight / 2));
     };
 
-    const resetGame = () => {
+    const resetGame = async () => {
         setScore(0);
         setAiScore(0);
+        setWinner(null);
+        setCoinsEarned(0);
         setGameState('SEARCHING');
         player.current = { x: 0, y: 160 };
         ai.current = { x: 590, y: 160 };
         resetBall();
+        await beginBackendSession();
         setTimeout(() => setGameState('PLAYING'), 2000);
     };
 
@@ -195,11 +261,14 @@ const PingPong = () => {
                             <span className="pp-title-purple"> Ping Pong.</span>
                             <span className="pp-title-green"> Fast Paced.</span>
                         </h1>
+                        <p className="pp-subtitle">First to {WIN_SCORE} points wins!</p>
                     </div>
 
                     <div className="pp-status-row">
                         <div className="pp-status">
-                            {gameState === 'SEARCHING' ? 'Finding Match...' : 'First to miss loses!'}
+                            {gameState === 'SEARCHING' ? 'Finding Match...' :
+                             gameState === 'GAME_OVER' ? (winner === 'player' ? '🎉 You Win!' : '💔 Computer Wins') :
+                             `First to ${WIN_SCORE} wins!`}
                         </div>
                         <div className="pp-score-chip">
                             <span style={{color: '#8e44ad'}}>You: {score}</span>
@@ -222,6 +291,19 @@ const PingPong = () => {
                         />
                         <p className="pp-instructions">Move mouse or drag finger to control your paddle</p>
                     </div>
+
+                    {gameState === 'GAME_OVER' && (
+                        <div className="pp-modal-overlay">
+                            <div className="pp-modal-content">
+                                <h2>{winner === 'player' ? '🎉 You Win!' : '💔 Computer Wins'}</h2>
+                                <p className="pp-final-score">{score} – {aiScore}</p>
+                                <p className="pp-coin-reward">+{coinsEarned} Z Coins</p>
+                                <button onClick={resetGame} className="pp-modal-btn">
+                                    Play Again
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <style>{styles}</style>
@@ -271,6 +353,11 @@ const styles = `
         background: linear-gradient(135deg, #22c55e, #16a34a);
         -webkit-background-clip: text; background-clip: text;
         -webkit-text-fill-color: transparent;
+    }
+    .pp-subtitle {
+        color: var(--text-secondary);
+        font-size: 1rem; line-height: 1.6;
+        max-width: 480px; margin: 0.4rem auto 0;
     }
 
     .pp-status-row {
@@ -340,6 +427,29 @@ const styles = `
         font-weight: 500;
         text-align: center;
     }
+
+    .pp-modal-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 100; backdrop-filter: blur(8px);
+    }
+    .pp-modal-content {
+        background: white; padding: 3rem; border-radius: 24px;
+        text-align: center; font-family: var(--font-ui);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .pp-modal-content h2 { font-size: 2.2rem; margin: 0 0 1rem; color: var(--text-primary); }
+    .pp-final-score { font-size: 1.8rem; font-weight: 900; color: var(--accent-primary); margin: 0.5rem 0 1rem; }
+    .pp-coin-reward { font-size: 1.5rem !important; color: #FFD700 !important; font-weight: 800; margin-bottom: 2rem; }
+    .pp-modal-btn {
+        background: linear-gradient(135deg, #8e44ad, #ef4444);
+        color: white; border: none; padding: 1rem 3rem; border-radius: 99px;
+        font-size: 1.2rem; font-weight: 800; cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 10px 20px rgba(142,68,173,0.3);
+    }
+    .pp-modal-btn:hover { transform: translateY(-2px); box-shadow: 0 15px 25px rgba(142,68,173,0.4); }
 
     @media (max-width: 640px) {
         .pp-inner { padding: 2rem 1.25rem 3rem; }
