@@ -39,8 +39,9 @@ const TicTacToe = () => {
                 score: result === 'win' ? 1 : 0,
                 finalState: { board }
             });
-            await refreshBalance();
-            setCoinsEarned(res.coinChange || 0);
+            const earned = res.coinChange || 0;
+            setCoinsEarned(earned);
+            if (earned > 0) await refreshBalance();
             sessionIdRef.current = null;
         } catch (err) {
             console.error('Could not end session:', err);

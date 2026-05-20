@@ -128,6 +128,10 @@ const Snake = () => {
 
     useEffect(() => {
         const handleKeyPress = (e) => {
+            // Prevent page from scrolling on arrow keys / space
+            if (e.key.startsWith('Arrow') || e.key === ' ') {
+                e.preventDefault();
+            }
             if (!hasStarted && (e.key.startsWith('Arrow') || e.key === ' ')) {
                 setHasStarted(true);
                 beginBackendSession();
@@ -142,7 +146,7 @@ const Snake = () => {
                 default: break;
             }
         };
-        window.addEventListener('keydown', handleKeyPress);
+        window.addEventListener('keydown', handleKeyPress, { passive: false });
         return () => window.removeEventListener('keydown', handleKeyPress);
     }, [direction, hasStarted]);
 

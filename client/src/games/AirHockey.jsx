@@ -20,13 +20,15 @@ const AirHockey = () => {
     const [coinsEarned, setCoinsEarned] = useState(0);
     const animationIdRef = useRef(null);
 
-    // Refs to read scores inside game loop
+    // Refs to read state inside the game loop without stale closures
     const scoreRef = useRef(0);
     const aiScoreRef = useRef(0);
     const gameOverRef = useRef(false);
+    const isSearchingRef = useRef(true);
     useEffect(() => { scoreRef.current = score; }, [score]);
     useEffect(() => { aiScoreRef.current = aiScore; }, [aiScore]);
     useEffect(() => { gameOverRef.current = gameOver; }, [gameOver]);
+    useEffect(() => { isSearchingRef.current = isSearching; }, [isSearching]);
 
     // Background canvas
     useEffect(() => {
@@ -107,8 +109,9 @@ const AirHockey = () => {
                 score: finalPlayerScore,
                 finalState: { playerScore: finalPlayerScore, aiScore: finalAiScore }
             });
-            await refreshBalance();
-            setCoinsEarned(res.coinChange || 0);
+            const earned = res.coinChange || 0;
+            setCoinsEarned(earned);
+            if (earned > 0) await refreshBalance();
             sessionIdRef.current = null;
         } catch (err) {
             console.error('Could not end session:', err);
@@ -129,7 +132,7 @@ const AirHockey = () => {
     };
 
     const update = () => {
-        if (isSearching || gameOverRef.current) return;
+        if (isSearchingRef.current || gameOverRef.current) return;
         const p = puck.current;
         const u = player.current;
         const a = ai.current;
@@ -235,7 +238,7 @@ const AirHockey = () => {
         ctx.arc(puck.current.x, puck.current.y, puck.current.radius, 0, Math.PI * 2);
         ctx.fill();
 
-        if (isSearching) {
+        if (isSearchingRef.current) {
             ctx.fillStyle = 'rgba(255,255,255,0.8)';
             ctx.fillRect(0, 0, 500, 800);
             ctx.fillStyle = '#8e44ad';
@@ -245,6 +248,7 @@ const AirHockey = () => {
         }
     };
 
+    // Game loop runs ONCE for component lifetime
     useEffect(() => {
         const loop = () => {
             update();
@@ -253,7 +257,7 @@ const AirHockey = () => {
         };
         animationIdRef.current = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(animationIdRef.current);
-    }, [isSearching]);
+    }, []);
 
     const handleTouchMove = (e) => {
         const rect = canvasRef.current.getBoundingClientRect();

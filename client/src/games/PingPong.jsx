@@ -14,16 +14,18 @@ const PingPong = () => {
 
     const [score, setScore] = useState(0);
     const [aiScore, setAiScore] = useState(0);
-    const [gameState, setGameState] = useState('SEARCHING');  // SEARCHING | PLAYING | GAME_OVER
+    const [gameState, setGameState] = useState('SEARCHING');
     const [winner, setWinner] = useState(null);
     const [coinsEarned, setCoinsEarned] = useState(0);
     const animationIdRef = useRef(null);
 
-    // Refs to read scores inside the game loop without stale closure
+    // Refs mirror state so the game loop reads fresh values
     const scoreRef = useRef(0);
     const aiScoreRef = useRef(0);
+    const gameStateRef = useRef(gameState);
     useEffect(() => { scoreRef.current = score; }, [score]);
     useEffect(() => { aiScoreRef.current = aiScore; }, [aiScore]);
+    useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
     // Background canvas
     useEffect(() => {
@@ -105,8 +107,9 @@ const PingPong = () => {
                 score: finalPlayerScore,
                 finalState: { playerScore: finalPlayerScore, aiScore: finalAiScore }
             });
-            await refreshBalance();
-            setCoinsEarned(res.coinChange || 0);
+            const earned = res.coinChange || 0;
+            setCoinsEarned(earned);
+            if (earned > 0) await refreshBalance();
             sessionIdRef.current = null;
         } catch (err) {
             console.error('Could not end session:', err);
@@ -127,7 +130,7 @@ const PingPong = () => {
     };
 
     const update = () => {
-        if (gameState !== 'PLAYING') return;
+        if (gameStateRef.current !== 'PLAYING') return;
         const b = ball.current;
         const p = player.current;
         const a = ai.current;
@@ -200,7 +203,7 @@ const PingPong = () => {
         ctx.arc(ball.current.x, ball.current.y, ball.current.radius, 0, Math.PI * 2);
         ctx.fill();
 
-        if (gameState === 'SEARCHING') {
+        if (gameStateRef.current === 'SEARCHING') {
             ctx.fillStyle = 'rgba(0,0,0,0.6)';
             ctx.fillRect(0, 0, 600, 400);
             ctx.fillStyle = '#fff';
@@ -210,6 +213,7 @@ const PingPong = () => {
         }
     };
 
+    // Game loop runs ONCE for component lifetime (no deps)
     useEffect(() => {
         const loop = () => {
             update();
@@ -218,7 +222,7 @@ const PingPong = () => {
         };
         animationIdRef.current = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(animationIdRef.current);
-    }, [gameState]);
+    }, []);
 
     const handleMouseMove = (e) => {
         const rect = canvasRef.current.getBoundingClientRect();
