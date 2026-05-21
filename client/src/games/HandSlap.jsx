@@ -195,7 +195,7 @@ const HandSlap = () => {
                         <div className="hs-score-chip">
                             <span style={{ color: '#3b82f6' }}>You: {score}</span>
                             <span style={{ color: '#444' }}>|</span>
-                            <span style={{ color: '#ef4444' }}>AI: {aiScore}</span>
+                            <span style={{ color: '#ef4444' }}>Computer: {aiScore}</span>
                         </div>
                         <button className="hs-restart-btn" onClick={resetGame}>
                             <RotateCcw size={15} /> Restart
@@ -240,7 +240,7 @@ const HandSlap = () => {
                     <div className="hs-modal-overlay">
                         <div className="hs-modal-content">
                             <h2>{score > aiScore ? '🎉 You Win!' : '💔 You Lose'}</h2>
-                            <p>You scored {score} slaps. AI scored {aiScore}.</p>
+                            <p>You scored {score} slaps. Computer scored {aiScore}.</p>
                             <p className="hs-coin-reward">+{coinsEarned} Z Coins</p>
                             <button onClick={resetGame} className="hs-btn-attack" style={{ marginTop: '1.5rem', padding: '1rem 3rem' }}>
                                 Play Again

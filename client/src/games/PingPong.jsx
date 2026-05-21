@@ -299,7 +299,7 @@ a.y = Math.max(0, Math.min(400 - paddleHeight, a.y));
                         <div className="pp-score-chip">
                             <span style={{color: '#8e44ad'}}>You: {score}</span>
                             <span style={{color: '#444'}}>|</span>
-                            <span style={{color: '#ef4444'}}>AI: {aiScore}</span>
+                            <span style={{color: '#ef4444'}}>Computer: {aiScore}</span>
                         </div>
                         <button className="pp-restart-btn" onClick={resetGame}>
                             <RotateCcw size={15} /> Restart

@@ -180,7 +180,7 @@ const RPS = () => {
                         <div className="rps-score-chip">
                             <span style={{ color: '#3b82f6' }}>You: {score.user}</span>
                             <span style={{ color: '#444' }}>|</span>
-                            <span style={{ color: '#ef4444' }}>AI: {score.ai}</span>
+                            <span style={{ color: '#ef4444' }}>Computer: {score.ai}</span>
                         </div>
                         {(score.user > 0 || score.ai > 0) && (
                             <button className="rps-restart-btn" onClick={resetGame}>
@@ -200,7 +200,7 @@ const RPS = () => {
 
                             <div className={`rps-player-box ${isRolling ? 'rps-shake' : ''}`}>
                                 <div className="rps-emoji">{aiChoice?.emoji || '❓'}</div>
-                                <div className="rps-label">AI</div>
+                                <div className="rps-label">Computer</div>
                             </div>
                         </div>
 

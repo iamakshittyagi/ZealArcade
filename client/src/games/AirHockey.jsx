@@ -339,7 +339,7 @@ a.y = Math.max(a.radius, Math.min(380, a.y));
                         <div className="ah-score-chip">
                             <span style={{color: '#8e44ad'}}>You: {score}</span>
                             <span style={{color: '#444'}}>|</span>
-                            <span style={{color: '#ef4444'}}>AI: {aiScore}</span>
+                            <span style={{color: '#ef4444'}}>Computer: {aiScore}</span>
                         </div>
                         <button className="ah-restart-btn" onClick={resetGame}>
                             <RotateCcw size={15} /> Restart
