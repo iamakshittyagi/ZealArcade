@@ -64,27 +64,27 @@ const Login = () => {
     }, []);
 
     const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-        await login({ username, password });
-        const user = await login({ username, password });
-if (user.role === 'admin') {
-    navigate('/admin');
-} else {
-    navigate('/arcade');
-}
-    } catch (err) {
-        const msg = err.response?.data?.error || 'Login failed. Please try again.';
-        setError(msg);
-        setLoading(false);
-    }
-};
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        try {
+            const user = await login({ username, password });
+            if (user?.role === 'admin') {
+                navigate('/admin');
+            } else {
+                navigate('/arcade');
+            }
+        } catch (err) {
+            const msg = err.response?.data?.error || 'Login failed. Please try again.';
+            setError(msg);
+            setLoading(false);
+        }
+    };
+
     const fields = [
-    { id: 'username', label: 'Username', type: 'text', value: username, setter: setUsername, placeholder: 'Enter your username', icon: '👤' },
-    { id: 'password', label: 'Password', type: 'password', value: password, setter: setPassword, placeholder: 'Enter your password', icon: '🔒' },
-];
+        { id: 'username', label: 'Username', type: 'text', value: username, setter: setUsername, placeholder: 'Enter your username', icon: '👤' },
+        { id: 'password', label: 'Password', type: 'password', value: password, setter: setPassword, placeholder: 'Enter your password', icon: '🔒' },
+    ];
 
     return (
         <Layout showHeader={false} showFooter={false}>
@@ -164,55 +164,24 @@ if (user.role === 'admin') {
                                     )}
                                 </button>
                             </form>
-                            <div style={{
-    marginTop: '1.5rem',
-    paddingTop: '1rem',
-    borderTop: '1px solid rgba(0,0,0,0.06)',
-    textAlign: 'center'
-}}>
-    <Link to="/admin-login" style={{
-        fontSize: '0.78rem',
-        color: 'var(--text-secondary)',
-        fontWeight: 600,
-        textDecoration: 'none',
-        opacity: 0.6
-    }}>
-        🔒 Admin Login →
-    </Link>
-</div>
 
                             <p className="li-footer-text">
                                 Don't have an account?{' '}
                                 <Link to="/signup" className="li-link">Sign Up</Link>
                             </p>
+
+                            {/* Admin Login — subtle, sits inside the card at the bottom */}
+                            <div className="li-admin-row">
+                                <Link to="/admin-login" className="li-admin-link">
+                                    🔒 Admin Login →
+                                </Link>
+                            </div>
                         </div>
                     </div>
-                    <div style={{
-    marginTop: '1.5rem',
-    paddingTop: '1rem',
-    borderTop: '1px solid rgba(0,0,0,0.06)',
-    textAlign: 'center'
-}}>
-    <Link to="/admin-login" style={{
-        fontSize: '0.78rem',
-        color: 'var(--text-secondary)',
-        fontWeight: 600,
-        textDecoration: 'none',
-        opacity: 0.6,
-        transition: 'opacity 0.2s'
-    }}
-    onMouseEnter={(e) => e.target.style.opacity = '1'}
-    onMouseLeave={(e) => e.target.style.opacity = '0.6'}
-    >
-        🔒 Admin Login →
-    </Link>
-</div>
 
                     {/* Right — showcase */}
                     <div className="li-right">
                         <div className="li-right-inner">
-
-
                             <h1 className="li-headline">
                                 <span className="li-hl-dark">Pick up where</span>
                                 <span className="li-hl-purple">you left</span>
@@ -439,23 +408,30 @@ if (user.role === 'admin') {
                 }
                 .li-link:hover { opacity: 0.75; }
 
+                /* Admin row at bottom of card */
+                .li-admin-row {
+                    margin-top: 1.25rem;
+                    padding-top: 1rem;
+                    border-top: 1px solid rgba(0,0,0,0.06);
+                    text-align: center;
+                }
+                .li-admin-link {
+                    font-size: 0.78rem;
+                    color: var(--text-secondary);
+                    font-weight: 600;
+                    text-decoration: none;
+                    opacity: 0.6;
+                    transition: opacity 0.2s, color 0.2s;
+                }
+                .li-admin-link:hover {
+                    opacity: 1;
+                    color: var(--accent-primary);
+                }
+
                 /* Right */
                 .li-right { animation: fadeUp 0.5s ease 0.22s both; }
                 .li-right-inner { display: flex; flex-direction: column; gap: 1.8rem; }
 
-                .li-badge {
-                    display: inline-flex; align-items: center; gap: 0.5rem;
-                    background: rgba(34,197,94,0.08);
-                    border: 1px solid rgba(34,197,94,0.25);
-                    border-radius: 999px; padding: 0.35rem 1rem;
-                    font-size: 0.78rem; font-weight: 700; color: #16a34a;
-                    font-family: var(--font-ui); letter-spacing: 0.06em;
-                    text-transform: uppercase; width: fit-content;
-                }
-                .li-badge-dot {
-                    width: 7px; height: 7px; border-radius: 50%;
-                    background: #22c55e; animation: pulse 1.8s infinite;
-                }
                 .li-headline {
                     display: flex; flex-direction: column; gap: 0.05rem;
                     font-family: var(--font-ui);
