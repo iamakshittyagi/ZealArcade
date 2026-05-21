@@ -138,9 +138,31 @@ const PingPong = () => {
         b.x += b.dx;
         b.y += b.dy;
 
-        const aiSpeed = 3.5;
-        if (a.y + paddleHeight / 2 < b.y) a.y += aiSpeed;
-        else a.y -= aiSpeed;
+        const aiSpeed = 5;
+const deadzone = 8;
+
+// Only react if ball is moving toward AI (saves CPU and looks more natural)
+let targetY;
+if (b.dx > 0) {
+    // Ball coming at AI — predict where it'll be at paddle's x
+    const framesToReach = (a.x - b.x) / b.dx;
+    targetY = b.y + b.dy * framesToReach;
+    // Clamp prediction to court (account for bounces)
+    while (targetY < 0 || targetY > 400) {
+        if (targetY < 0) targetY = -targetY;
+        if (targetY > 400) targetY = 800 - targetY;
+    }
+} else {
+    // Ball moving away — drift toward center
+    targetY = 200;
+}
+
+const aiCenter = a.y + paddleHeight / 2;
+const dy = targetY - aiCenter;
+if (Math.abs(dy) > deadzone) {
+    a.y += Math.sign(dy) * aiSpeed;
+}
+a.y = Math.max(0, Math.min(400 - paddleHeight, a.y));
 
         if (b.y + b.radius > 400 || b.y - b.radius < 0) b.dy *= -1;
 

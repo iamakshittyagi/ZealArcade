@@ -142,11 +142,35 @@ const AirHockey = () => {
         p.dx *= 0.99;
         p.dy *= 0.99;
 
-        const targetX = p.x;
-        const aiSpeed = 4;
-        if (a.x < targetX) a.x += aiSpeed;
-        else a.x -= aiSpeed;
-        a.y = 100;
+        const aiSpeed = 4.5;
+const deadzone = 6;  // don't twitch when close
+
+// Predict where the puck will be 8 frames ahead
+const predictedX = p.x + p.dx * 8;
+const predictedY = p.y + p.dy * 8;
+
+// X-axis tracking with deadzone
+const dxToTarget = predictedX - a.x;
+if (Math.abs(dxToTarget) > deadzone) {
+    a.x += Math.sign(dxToTarget) * aiSpeed;
+}
+a.x = Math.max(a.radius, Math.min(500 - a.radius, a.x));
+
+// Y-axis: only move down to meet puck if it's in the AI's half (top 400px),
+// otherwise return toward y=80 (defensive home position)
+let aiTargetY;
+if (p.y < 400) {
+    // Puck is in AI's half — go meet it, but don't cross past 350
+    aiTargetY = Math.min(predictedY, 350);
+} else {
+    // Puck is in player's half — return home
+    aiTargetY = 80;
+}
+const dyToTarget = aiTargetY - a.y;
+if (Math.abs(dyToTarget) > deadzone) {
+    a.y += Math.sign(dyToTarget) * (aiSpeed * 0.7);
+}
+a.y = Math.max(a.radius, Math.min(380, a.y));
 
         if (p.x - p.radius < 0 || p.x + p.radius > 500) {
             p.dx *= -1;
