@@ -122,11 +122,17 @@ const StatsTab = () => {
     const [error, setError] = useState('');
 
     useEffect(() => {
+    const load = () => {
         fetchAdminStats()
             .then(data => setStats(data))
             .catch(err => setError(err.response?.data?.error || 'Could not load stats'))
             .finally(() => setLoading(false));
-    }, []);
+    };
+    load();
+    // Auto-refresh every 10 seconds
+    const interval = setInterval(load, 10000);
+    return () => clearInterval(interval);
+}, []);
 
     if (loading) return <div className="ad-state"><div className="ad-spinner" />Loading stats...</div>;
     if (error) return <div className="ad-state ad-state-error">{error}</div>;

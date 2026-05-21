@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGame } from '../context/GameContext';
-import { LogOut, Coins, Gift, Sparkles, Zap, LogIn, UserPlus, Trophy, Shield } from 'lucide-react'; // 👈 Shield added
+import { LogOut, Coins, Gift, Sparkles, Zap, LogIn, UserPlus, Trophy, Shield } from 'lucide-react';
 
 const Header = () => {
     const { user, balance, logout, updateBalance } = useGame();
@@ -36,11 +36,13 @@ const Header = () => {
     const lastRefer = user ? localStorage.getItem(`lastRefer_${user.username}`) : null;
     const canRefer = !lastRefer || (Date.now() - parseInt(lastRefer)) > 24 * 60 * 60 * 1000;
 
+    const isAdmin = user?.role === 'admin';
+
     return (
         <header className="site-header">
             <div className="header-inner">
-                {/* Logo / brand */}
-                <Link to={user ? '/arcade' : '/'} className="header-brand">
+                {/* Logo / brand — admins land on /admin, users on /arcade */}
+                <Link to={user ? (isAdmin ? '/admin' : '/arcade') : '/'} className="header-brand">
                     <img src="/assets/logo_whitebg.png" alt="Zeal Arcade" />
                     <span className="brand-text">Zeal<span className="brand-arcade">Arcade</span></span>
                 </Link>
@@ -49,39 +51,48 @@ const Header = () => {
                 <div className="header-actions">
                     {user ? (
                         <>
-                            <span className="welcome-text">Welcome, <strong>{user.username}</strong></span>
+                            <span className="welcome-text">
+                                Welcome, <strong>{user.username}</strong>
+                                {isAdmin && <span className="admin-tag">ADMIN</span>}
+                            </span>
 
-                            <button onClick={handleDevCheat} className="header-btn dev-btn" title="Add 1000 coins (5h cooldown)">
-                                <Zap size={16} /> +1000
-                            </button>
+                            {/* USER-ONLY buttons — hidden for admins */}
+                            {!isAdmin && (
+                                <>
+                                    <button onClick={handleDevCheat} className="header-btn dev-btn" title="Add 1000 coins (5h cooldown)">
+                                        <Zap size={16} /> +1000
+                                    </button>
 
-                            {canRefer && (
-                                <button onClick={handleRefer} className="header-btn refer-btn">
-                                    <Gift size={16} /> Refer
-                                </button>
+                                    {canRefer && (
+                                        <button onClick={handleRefer} className="header-btn refer-btn">
+                                            <Gift size={16} /> Refer
+                                        </button>
+                                    )}
+
+                                    <Link to="/leaderboard" className="header-btn leaderboard-btn">
+                                        <Trophy size={16} /> Leaderboard
+                                    </Link>
+
+                                    <Link to="/rewards" className="header-btn rewards-btn">
+                                        <Sparkles size={16} /> Rewards
+                                    </Link>
+
+                                    <div className="balance-chip">
+                                        <Coins size={16} color="#FFD700" />
+                                        <span className="balance-num">{balance.toLocaleString()}</span>
+                                        <span className="balance-label">Z Coins</span>
+                                    </div>
+                                </>
                             )}
 
-                            {/* 👇 Admin link — only visible to admins */}
-                            {user?.role === 'admin' && (
+                            {/* ADMIN-ONLY button */}
+                            {isAdmin && (
                                 <Link to="/admin" className="header-btn admin-btn" title="Admin Panel">
-                                    <Shield size={16} /> Admin
+                                    <Shield size={16} /> Admin Panel
                                 </Link>
                             )}
 
-                            <Link to="/leaderboard" className="header-btn leaderboard-btn">
-                                <Trophy size={16} /> Leaderboard
-                            </Link>
-
-                            <Link to="/rewards" className="header-btn rewards-btn">
-                                <Sparkles size={16} /> Rewards
-                            </Link>
-
-                            <div className="balance-chip">
-                                <Coins size={16} color="#FFD700" />
-                                <span className="balance-num">{balance.toLocaleString()}</span>
-                                <span className="balance-label">Z Coins</span>
-                            </div>
-
+                            {/* Logout — both roles */}
                             <button onClick={handleLogout} className="header-btn logout-btn">
                                 <LogOut size={16} /> Logout
                             </button>
@@ -133,13 +144,8 @@ const Header = () => {
                     height: 34px;
                     width: auto;
                 }
-                .brand-text {
-                    color: var(--text-primary);
-                }
-                .brand-arcade {
-                    color: var(--accent-primary);
-                    margin-left: 3px;
-                }
+                .brand-text { color: var(--text-primary); }
+                .brand-arcade { color: var(--accent-primary); margin-left: 3px; }
                 .header-actions {
                     display: flex;
                     align-items: center;
@@ -149,6 +155,20 @@ const Header = () => {
                 .welcome-text {
                     color: var(--text-secondary);
                     font-size: 0.95rem;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                }
+                .admin-tag {
+                    display: inline-block;
+                    padding: 0.15rem 0.5rem;
+                    background: linear-gradient(135deg, #8e44ad, #732d91);
+                    color: white;
+                    border-radius: 999px;
+                    font-size: 0.62rem;
+                    font-weight: 900;
+                    letter-spacing: 0.12em;
+                    box-shadow: 0 2px 6px rgba(142,68,173,0.3);
                 }
                 .header-btn {
                     display: inline-flex;
@@ -164,9 +184,7 @@ const Header = () => {
                     border: none;
                     transition: transform 0.15s ease, box-shadow 0.15s ease;
                 }
-                .header-btn:hover {
-                    transform: translateY(-1px);
-                }
+                .header-btn:hover { transform: translateY(-1px); }
                 .primary-btn,
                 .rewards-btn {
                     background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
@@ -181,9 +199,7 @@ const Header = () => {
                     color: var(--text-primary);
                     border: 1px solid var(--card-border);
                 }
-                .ghost-btn:hover {
-                    background: var(--card-bg);
-                }
+                .ghost-btn:hover { background: var(--card-bg); }
                 .refer-btn {
                     background: linear-gradient(135deg, #10b981, #059669);
                     color: white;
@@ -219,7 +235,6 @@ const Header = () => {
                     font-size: 0.8rem;
                     color: var(--text-secondary);
                 }
-                /* 👇 Admin button style */
                 .admin-btn {
                     background: linear-gradient(135deg, #8e44ad, #732d91);
                     color: white;

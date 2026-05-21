@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { registerUser, loginUser, fetchMe } from '../api/auth';
+import { registerUser, loginUser, fetchMe, adminLoginUser } from '../api/auth';
 import api from '../api/axios';
 
 const GameContext = createContext();
@@ -9,7 +9,6 @@ export const GameProvider = ({ children }) => {
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // On first mount: validate stored token and restore session
   useEffect(() => {
     const token = localStorage.getItem('zealToken');
     if (!token) {
@@ -27,7 +26,6 @@ export const GameProvider = ({ children }) => {
       .finally(() => setLoading(false));
   }, []);
 
-  // REGISTER
   const register = async ({ username, email, password }) => {
     const { token, user } = await registerUser({ username, email, password });
     localStorage.setItem('zealToken', token);
@@ -37,7 +35,6 @@ export const GameProvider = ({ children }) => {
     return user;
   };
 
-  // LOGIN
   const login = async ({ username, password }) => {
     const { token, user } = await loginUser({ username, password });
     localStorage.setItem('zealToken', token);
@@ -47,7 +44,15 @@ export const GameProvider = ({ children }) => {
     return user;
   };
 
-  // LOGOUT
+  const adminLogin = async ({ username, password }) => {
+    const { token, user } = await adminLoginUser({ username, password });
+    localStorage.setItem('zealToken', token);
+    localStorage.setItem('zealUser', user.username);
+    setUser(user);
+    setBalance(user.coins ?? 0);
+    return user;
+  };
+
   const logout = () => {
     localStorage.removeItem('zealToken');
     localStorage.removeItem('zealUser');
@@ -55,19 +60,17 @@ export const GameProvider = ({ children }) => {
     setBalance(0);
   };
 
-  // SEND a delta to backend (used for entry fees, refer-a-friend, dev cheat)
   const updateBalance = async (delta) => {
-    setBalance(prev => prev + delta);  // optimistic UI update
+    setBalance(prev => prev + delta);
     try {
       const res = await api.post('/auth/coins', { delta });
-      setBalance(res.data.coins);  // sync with server
+      setBalance(res.data.coins);
     } catch (err) {
-      setBalance(prev => prev - delta);  // roll back on failure
+      setBalance(prev => prev - delta);
       console.error('Failed to update coins:', err);
     }
   };
 
-  // SYNC balance from server (used after game-end when backend already updated coins)
   const refreshBalance = async () => {
     try {
       const { user } = await fetchMe();
@@ -80,7 +83,7 @@ export const GameProvider = ({ children }) => {
 
   return (
     <GameContext.Provider
-      value={{ user, balance, loading, login, register, logout, updateBalance, refreshBalance }}
+      value={{ user, balance, loading, login, adminLogin, register, logout, updateBalance, refreshBalance }}
     >
       {children}
     </GameContext.Provider>

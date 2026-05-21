@@ -17,3 +17,7 @@ export const fetchMe = async () => {
   const res = await api.get('/auth/me');
   return res.data;  // { user }
 };
+export const adminLoginUser = async ({ username, password }) => {
+  const res = await api.post('/auth/admin-login', { username, password });
+  return res.data;  // { token, user }
+};

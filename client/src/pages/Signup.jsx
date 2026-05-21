@@ -93,7 +93,12 @@ const Signup = () => {
             // Clean up any leftover localStorage from previous demo logic
             localStorage.removeItem('snake_highscore');
             localStorage.removeItem('arrowsLevel');
-            navigate('/arcade');
+            const user = await register({ username, email, password });
+if (user.role === 'admin') {
+    navigate('/admin');
+} else {
+    navigate('/arcade');
+}
         } catch (err) {
             const msg = err.response?.data?.error || 'Registration failed. Please try again.';
             setError(msg);

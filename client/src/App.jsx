@@ -5,12 +5,13 @@ import { GameProvider, useGame } from './context/GameContext';
 // Pages
 import Welcome from './pages/Welcome';
 import Login from './pages/Login';
+import AdminLogin from './pages/AdminLogin';
+import AdminGuard from './components/AdminGuard';
 import Signup from './pages/Signup';
 import Arcade from './pages/Arcade';
 import Rewards from './pages/Rewards';
 import Leaderboard from './pages/Leaderboard';
 import Admin from './pages/Admin';
-
 
 // Games
 import TicTacToe from './games/TicTacToe';
@@ -31,7 +32,7 @@ import AirHockey from './games/AirHockey';
 
 const ProtectedRoute = ({ children }) => {
     const { user, loading } = useGame();
-    if (loading) return null;  // or a spinner if you want
+    if (loading) return null;
     if (!user) return <Navigate to="/login" replace />;
     return children;
 };
@@ -45,66 +46,69 @@ function App() {
                     <Route path="/" element={<Welcome />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/signup" element={<Signup />} />
+                    <Route path="/admin-login" element={<AdminLogin />} />
 
-                    {/* Protected — main app */}
-                    <Route path="/arcade" element={
-                        <ProtectedRoute><Arcade /></ProtectedRoute>
-                    } />
-                    <Route path="/rewards" element={
-                        <ProtectedRoute><Rewards /></ProtectedRoute>
-                    } />
-                    <Route path="/leaderboard" element={
-                        <ProtectedRoute><Leaderboard /></ProtectedRoute>
-                    } />
+                    {/* Admin-only — admins required, no AdminGuard */}
                     <Route path="/admin" element={
                         <ProtectedRoute><Admin /></ProtectedRoute>
                     } />
 
-                    {/* Games (all protected) */}
+                    {/* User-only — admins are bounced to /admin by AdminGuard */}
+                    <Route path="/arcade" element={
+                        <ProtectedRoute><AdminGuard><Arcade /></AdminGuard></ProtectedRoute>
+                    } />
+                    <Route path="/rewards" element={
+                        <ProtectedRoute><AdminGuard><Rewards /></AdminGuard></ProtectedRoute>
+                    } />
+                    <Route path="/leaderboard" element={
+                        <ProtectedRoute><AdminGuard><Leaderboard /></AdminGuard></ProtectedRoute>
+                    } />
+
+                    {/* Games (all protected + admin-blocked) */}
                     <Route path="/games/tic-tac-toe" element={
-                        <ProtectedRoute><TicTacToe /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><TicTacToe /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/snake-ladder" element={
-                        <ProtectedRoute><SnakeLadder /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><SnakeLadder /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/ludo" element={
-                        <ProtectedRoute><Ludo /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><Ludo /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/chess" element={
-                        <ProtectedRoute><Chess /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><Chess /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/snake" element={
-                        <ProtectedRoute><Snake /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><Snake /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/sudoku" element={
-                        <ProtectedRoute><Sudoku /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><Sudoku /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/connect-four" element={
-                        <ProtectedRoute><ConnectFour /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><ConnectFour /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/flappy-bird" element={
-                        <ProtectedRoute><FlappyBird /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><FlappyBird /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/arrows" element={
-                        <ProtectedRoute><Arrows /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><Arrows /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/pacman" element={
-                        <ProtectedRoute><Pacman /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><Pacman /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/sea-battle" element={
-                        <ProtectedRoute><SeaBattle /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><SeaBattle /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/ping-pong" element={
-                        <ProtectedRoute><PingPong /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><PingPong /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/hand-slap" element={
-                        <ProtectedRoute><HandSlap /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><HandSlap /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/rps" element={
-                        <ProtectedRoute><RPS /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><RPS /></AdminGuard></ProtectedRoute>
                     } />
                     <Route path="/games/air-hockey" element={
-                        <ProtectedRoute><AirHockey /></ProtectedRoute>
+                        <ProtectedRoute><AdminGuard><AirHockey /></AdminGuard></ProtectedRoute>
                     } />
 
                     {/* Catch-all */}

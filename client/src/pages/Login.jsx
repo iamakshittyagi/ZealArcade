@@ -69,7 +69,12 @@ const Login = () => {
     setLoading(true);
     try {
         await login({ username, password });
-        navigate('/arcade');
+        const user = await login({ username, password });
+if (user.role === 'admin') {
+    navigate('/admin');
+} else {
+    navigate('/arcade');
+}
     } catch (err) {
         const msg = err.response?.data?.error || 'Login failed. Please try again.';
         setError(msg);
@@ -159,6 +164,22 @@ const Login = () => {
                                     )}
                                 </button>
                             </form>
+                            <div style={{
+    marginTop: '1.5rem',
+    paddingTop: '1rem',
+    borderTop: '1px solid rgba(0,0,0,0.06)',
+    textAlign: 'center'
+}}>
+    <Link to="/admin-login" style={{
+        fontSize: '0.78rem',
+        color: 'var(--text-secondary)',
+        fontWeight: 600,
+        textDecoration: 'none',
+        opacity: 0.6
+    }}>
+        🔒 Admin Login →
+    </Link>
+</div>
 
                             <p className="li-footer-text">
                                 Don't have an account?{' '}
@@ -166,6 +187,26 @@ const Login = () => {
                             </p>
                         </div>
                     </div>
+                    <div style={{
+    marginTop: '1.5rem',
+    paddingTop: '1rem',
+    borderTop: '1px solid rgba(0,0,0,0.06)',
+    textAlign: 'center'
+}}>
+    <Link to="/admin-login" style={{
+        fontSize: '0.78rem',
+        color: 'var(--text-secondary)',
+        fontWeight: 600,
+        textDecoration: 'none',
+        opacity: 0.6,
+        transition: 'opacity 0.2s'
+    }}
+    onMouseEnter={(e) => e.target.style.opacity = '1'}
+    onMouseLeave={(e) => e.target.style.opacity = '0.6'}
+    >
+        🔒 Admin Login →
+    </Link>
+</div>
 
                     {/* Right — showcase */}
                     <div className="li-right">
